@@ -1,0 +1,56 @@
+appId: com.mineralbridge.app
+name: Sign up, verify, explainer, tier, KYC entry
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "Create an account"
+    timeout: 20000
+- assertVisible: "We buy your minerals."
+- tapOn: "Create an account"
+- assertVisible: "What's your mobile number?"
+- assertVisible: "000 000 0000"
+# On-screen keypad (keys are labelled with their digit).
+- tapOn: "8"
+- tapOn: "0"
+- tapOn: "2"
+- tapOn: "4"
+- tapOn: "4"
+- tapOn: "1"
+- tapOn: "9"
+- tapOn: "0"
+- tapOn: "8"
+- tapOn: "7"
+- assertVisible: "802 441 9087"
+- tapOn: "Send my code"
+- assertVisible: "Enter the 6-digit code"
+- tapOn: "1"
+- tapOn: "2"
+- tapOn: "3"
+- tapOn: "4"
+- tapOn: "5"
+- tapOn: "6"
+- extendedWaitUntil:
+    visible: "You're verified"
+    timeout: 8000
+- tapOn: "Continue"
+- assertVisible: "How Mineral Bridge works"
+- scrollUntilVisible:
+    element: "Who can join?"
+    centerElement: true
+# Let the list stop coasting before tapping.
+- waitForAnimationToEnd:
+    timeout: 1500
+- tapOn: "Who can join?"
+# The opened topic lists both sides and their levels below the header.
+- scrollUntilVisible:
+    element: "Artisanal miner"
+- assertVisible: "People and companies who dig or hold material"
+- tapOn: "Got it — continue"
+- assertVisible: "Which best\ndescribes you?"
+- tapOn: "Registered company"
+- assertVisible: "Tier 3 unlocks bulk consignments and requires import or export permits."
+- tapOn: "Continue"
+- assertVisible: "Verify your identity"
+- tapOn: "Skip for now"
+- assertVisible: "Finish your identity check"

@@ -1,0 +1,57 @@
+appId: com.mineralbridge.app
+name: Sell-to-us estimate, booking gate, and support FAQ
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "I already have an account"
+    timeout: 20000
+- tapOn: "I already have an account"
+- assertVisible: "Welcome back"
+- assertVisible: "802 441 9087"
+- tapOn: "Send my code"
+# Six distinct digits: an entered digit also appears as text in its code box.
+- tapOn: "1"
+- tapOn: "3"
+- tapOn: "5"
+- tapOn: "7"
+- tapOn: "9"
+- tapOn: "0"
+- extendedWaitUntil:
+    visible: "Welcome back"
+    timeout: 8000
+- tapOn: "Continue"
+- tapOn: "Got it — continue"
+# Log-in skips the tier question and lands on home.
+- assertVisible: "Adaeze Okafor"
+- tapOn: "Sell to us"
+- assertVisible: "What are you selling to us?"
+- tapOn: "Gold Dust"
+- assertVisible: "Tell us what you have"
+- tapOn: "Increase quantity"
+- assertVisible: "300"
+# Unverified accounts see the gated CTA and are asked to finish KYC first.
+- tapOn: "Verify identity to continue"
+- assertVisible: "Verify your identity first"
+- tapOn: "Not right now"
+- tapOn: "Back"
+- tapOn: "Profile"
+- assertVisible: "KYC REQUIRED"
+- scrollUntilVisible:
+    element: "Help & support"
+    centerElement: true
+# Let the list stop coasting before tapping.
+- waitForAnimationToEnd:
+    timeout: 1500
+- tapOn: "Help & support"
+- assertVisible: "COMMON QUESTIONS"
+- scrollUntilVisible:
+    element: "Is there a fee for selling or evaluation?"
+    centerElement: true
+- waitForAnimationToEnd:
+    timeout: 1500
+- tapOn: "Is there a fee for selling or evaluation?"
+# Opening one answer closes the first one (one FAQ open at a time).
+- assertNotVisible: "Escrow releases within 24 hours.*"
+- scrollUntilVisible:
+    element: "Evaluation is free and we buy at the price we offer.*"

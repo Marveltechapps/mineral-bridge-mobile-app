@@ -1,0 +1,30 @@
+appId: com.mineralbridge.app
+name: Guest browses the marketplace and is asked to sign in to buy
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "Browse as guest"
+    timeout: 20000
+- tapOn: "Browse as guest"
+- assertVisible: "How Mineral Bridge works"
+- tapOn: "Browse as a guest"
+- assertVisible: "Guest mode"
+- tapOn: "Browse Marketplace"
+- assertVisible: "4 TYPES AVAILABLE"
+- tapOn: "Gold"
+- assertVisible: "Gold Doré Bar"
+- tapOn: "Copper"
+- tapOn: "Gold Doré Bar"
+- assertVisible: "22K · Osun State · sold by Mineral Bridge"
+- tapOn: "Buy Now"
+- assertVisible: "Create an account to continue"
+- tapOn: "Keep looking around"
+- assertNotVisible: "Create an account to continue"
+# Android back returns through the history to the product grid.
+- back
+- assertVisible: "Search minerals…"
+- tapOn: "Learn"
+- assertVisible: "Learning Center"
+- tapOn: "Trading"
+- assertVisible: "Trading on Mineral Bridge"

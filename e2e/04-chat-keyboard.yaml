@@ -1,0 +1,36 @@
+appId: com.mineralbridge.app
+name: Live chat composer with the software keyboard
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "Create an account"
+    timeout: 20000
+# Deep links open any screen, as the design's screen picker does.
+- openLink: mineralbridge://chat
+- assertVisible: "Ngozi A."
+- tapOn: "Write a message…"
+# Gboard shows a one-off stylus tutorial on fresh emulators.
+- tapOn:
+    text: "Cancel"
+    optional: true
+- inputText: "Is my payout confirmed?"
+- assertVisible: "Is my payout confirmed?"
+- tapOn: "Send"
+- extendedWaitUntil:
+    visible: "Got it — let me check that against your account.*"
+    timeout: 6000
+- hideKeyboard
+- tapOn: "Talk about an order"
+- tapOn: "Send"
+- extendedWaitUntil:
+    visible: "Sure — MB-2026-04871 is in transit.*"
+    timeout: 6000
+# The agent card (with End chat) scrolls with the thread. Hierarchy dumps
+# are slow while the online dot pulses, so allow more than the default 20s.
+- scrollUntilVisible:
+    element: "End chat"
+    direction: UP
+    timeout: 60000
+- tapOn: "End chat"
+- assertVisible: "Help & support"
