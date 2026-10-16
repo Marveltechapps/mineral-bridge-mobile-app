@@ -76,3 +76,5 @@ yarn-error.log
 
 # Local environment (copy from .env.example)
 .env
+android/app/debug.keystore
+android/app/debug.keystore
