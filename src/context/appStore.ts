@@ -29,6 +29,7 @@ export interface AppState {
   phone: string;
   code: string;
   resend: number;
+  otpExpires: number;
   tierIdx: number;
   guest: boolean;
   introOpen: number;
@@ -40,6 +41,10 @@ export interface AppState {
   payoutSel: number;
   danger: 'logout' | 'delete';
   chip: string;
+  catalogCategory: string;
+  catalogSubcategory: string;
+  catalogMineralType: string;
+  catalogProductForm: string;
   docIdx: number;
   cartA: number;
   cartB: number;
@@ -81,6 +86,7 @@ export const initialState: AppState = {
   phone: '8024419087',
   code: '',
   resend: 42,
+  otpExpires: 60,
   tierIdx: 0,
   guest: false,
   introOpen: 0,
@@ -92,6 +98,10 @@ export const initialState: AppState = {
   payoutSel: 0,
   danger: 'logout',
   chip: 'Gold',
+  catalogCategory: '',
+  catalogSubcategory: '',
+  catalogMineralType: '',
+  catalogProductForm: '',
   docIdx: 1,
   cartA: 250,
   cartB: 40,

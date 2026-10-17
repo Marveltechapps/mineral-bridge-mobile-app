@@ -1,3 +1,4 @@
+import { requestMobileOtp, isDemoMode } from '../api/auth';
 import { GATED } from '../lib/catalog';
 import { appStore } from '../context/appStore';
 import { flash, go, jump } from './flow';
@@ -35,8 +36,17 @@ export function primaryAction(screen: ScreenId) {
       return go('signupPhone');
     case 'signupPhone':
     case 'login':
-      set({ code: '', resend: 42 });
-      return go('otp');
+      if (isDemoMode()) {
+        set({ code: '', resend: 42 });
+        return go('otp');
+      }
+      void requestMobileOtp(st.phone, screen === 'login' || st.authMode === 'login' ? 'login' : 'signup')
+        .then(info => {
+          set({ code: '', resend: info.resendAfter || 42, otpExpires: info.expiresIn || 60 });
+          go('otp');
+        })
+        .catch((error: unknown) => flash(error instanceof Error ? error.message : 'Could not send the code'));
+      return;
     case 'kycReview':
       set({ kyc: 'pending' });
       return go('kycPending');

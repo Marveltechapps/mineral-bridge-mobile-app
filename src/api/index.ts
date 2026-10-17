@@ -1,4 +1,5 @@
 import { env } from '../config/env';
+import { getAccessToken } from './session';
 
 /**
  * Thin fetch wrapper for the Mineral Bridge API. Configuration comes from
@@ -164,11 +165,14 @@ export async function apiRequest<T>(
 
   let res: Response;
   try {
+    const token = getAccessToken();
     res = await fetch(`${env.API_BASE_URL}${path}`, {
       ...init,
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
+        'X-Client': 'mineralbridge-mobile/0.0.1',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...init.headers,
       },
       signal: controller.signal,

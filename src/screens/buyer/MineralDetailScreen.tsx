@@ -24,7 +24,7 @@ export function MineralDetailScreen() {
   return (
     <ScreenContainer screen="bDetail" contentStyle={styles.content}>
       <View style={styles.heroShadow}>
-        <Photo name="gold-dore" style={styles.hero} imageStyle={styles.r14}>
+        <Photo name="gold-dore" style={styles.hero} imageStyle={styles.r14} fit="contain">
           <View style={styles.counter}>
             <Text style={styles.counterText}>1 / 4</Text>
           </View>
@@ -114,7 +114,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     boxShadow: shadows.media,
   },
-  hero: { height: 250, borderRadius: 14, overflow: 'hidden' },
+  hero: { height: 280, borderRadius: 14, overflow: 'hidden', backgroundColor: '#eef1f6' },
   counter: {
     position: 'absolute',
     bottom: 12,

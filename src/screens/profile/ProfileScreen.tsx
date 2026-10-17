@@ -225,7 +225,7 @@ export function ProfileScreen() {
   return (
     <ScreenContainer screen="profile" contentStyle={styles.content}>
       <View style={styles.heroShadow}>
-        <Photo name="hero-grain" style={styles.hero} imageStyle={styles.r14}>
+        <Photo name="hero-grain" style={styles.hero} imageStyle={styles.r14} fit="cover">
           <Scrim gradient="linear-gradient(160deg,rgba(14,20,48,0.72),rgba(20,29,64,0.94))" />
           <View style={styles.heroBody}>
             <View style={styles.identity}>

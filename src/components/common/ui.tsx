@@ -520,11 +520,14 @@ export function Photo({
   children,
   dim,
   align = 'center',
+  fit = 'contain',
 }: {
   name: ImageName;
   imageStyle?: StyleProp<ImageStyle>;
   dim?: number;
   align?: 'center' | 'right';
+  /** `contain` shows the whole mineral photo. `cover` is for decorative banners. */
+  fit?: 'contain' | 'cover';
 } & Children &
   Styled) {
   if (align === 'right')
@@ -537,9 +540,10 @@ export function Photo({
     return (
       <Image
         source={images[name]}
-        resizeMode="cover"
+        resizeMode={fit}
         style={[
           styles.photo,
+          fit === 'contain' ? styles.contained : null,
           style as StyleProp<ImageStyle>,
           dim !== undefined ? { opacity: dim } : null,
         ]}
@@ -549,8 +553,8 @@ export function Photo({
   return (
     <ImageBackground
       source={images[name]}
-      resizeMode="cover"
-      style={style}
+      resizeMode={fit}
+      style={[fit === 'contain' ? styles.contained : null, style]}
       imageStyle={imageStyle}
     >
       {children}
@@ -968,6 +972,7 @@ const styles = StyleSheet.create({
   pill: { borderRadius: 9999, flexDirection: 'row', alignItems: 'center' },
   gridCell: { flex: 1 },
   photo: { width: '100%' },
+  contained: { backgroundColor: '#eef1f6' },
   stepperCard: {
     backgroundColor: '#fff',
     borderWidth: 1,

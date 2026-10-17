@@ -45,6 +45,7 @@ export function WelcomeScreen() {
           name="hero-grain"
           style={styles.hero}
           imageStyle={styles.heroImage}
+          fit="cover"
         >
           <Scrim
             gradient="linear-gradient(180deg,rgba(14,20,48,0.30) 0%,rgba(14,20,48,0.55) 52%,rgba(14,20,48,0.95) 100%)"

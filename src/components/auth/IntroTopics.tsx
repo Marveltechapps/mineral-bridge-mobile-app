@@ -206,6 +206,7 @@ function TopicMineral() {
         name="cat-precious"
         style={styles.mineralHero}
         imageStyle={styles.r16}
+        fit="cover"
       >
         <Scrim
           gradient="linear-gradient(180deg,rgba(14,20,48,0.05),rgba(14,20,48,0.78))"
@@ -377,7 +378,7 @@ function TopicCan() {
     <>
       {INTRO_CAN.map(c => (
         <View key={c.title} style={styles.canCard}>
-          <Photo name={c.img} style={styles.canHero}>
+          <Photo name={c.img} style={styles.canHero} fit="cover">
             <Scrim gradient="linear-gradient(180deg,rgba(14,20,48,0.05),rgba(14,20,48,0.72))" />
             <View style={styles.canLabel}>
               <Text style={styles.canKicker}>{c.label}</Text>

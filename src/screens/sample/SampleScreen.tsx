@@ -5,7 +5,7 @@ import { SampleCard } from '../../components/SampleCard';
 import { getSamples } from '../../services/sample.service';
 import type { SampleItem } from '../../types/sample';
 import { errorMessage } from '../../utils/errorMessage';
-import { colors, spacing } from '../../theme';
+import { colors } from '../../theme';
 
 export function SampleScreen({ onBack }: { onBack: () => void }) {
   const [items, setItems] = useState<SampleItem[]>([]);
@@ -27,6 +27,6 @@ export function SampleScreen({ onBack }: { onBack: () => void }) {
   </SafeAreaView>;
 }
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: spacing.large, backgroundColor: colors.background },
-  title: { fontSize: 28, fontWeight: '600', marginVertical: spacing.medium, color: colors.text },
+  container: { flex: 1, padding: 20, backgroundColor: colors.screen },
+  title: { fontSize: 28, fontWeight: '600', marginVertical: 12, color: colors.ink },
 });

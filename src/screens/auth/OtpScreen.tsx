@@ -10,6 +10,7 @@ import {
 import { PressableScale } from '../../components/common/PressableScale';
 import { Text } from '../../components/common/Text';
 import { ScreenContainer } from '../../components/layout/ScreenContainer';
+import { isDemoMode, resendMobileOtp, verifyMobileOtp } from '../../api/auth';
 import { flash, go } from '../../navigation/flow';
 import { appStore, setAppState, useApp } from '../../context/appStore';
 import { Keypad } from '../../components/auth/Keypad';
@@ -17,11 +18,13 @@ import { formatPhone, usePhone } from '../../lib/hooks/usePhone';
 
 /** 0.4 · Verify code — six boxes, keypad, and the resend countdown. */
 export function OtpScreen() {
-  const { code, resend, authMode } = useApp(s => ({
+  const { code, resend, otpExpires, authMode } = useApp(s => ({
     code: s.code,
     resend: s.resend,
+    otpExpires: s.otpExpires,
     authMode: s.authMode,
   }));
+  const expiryLeft = isDemoMode() ? resend : otpExpires;
   const { full } = usePhone();
   const advance = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -29,8 +32,11 @@ export function OtpScreen() {
   useFocusEffect(
     useCallback(() => {
       const iv = setInterval(() => {
-        if (appStore.getState().resend > 0)
-          setAppState(p => ({ resend: p.resend - 1 }));
+        if (appStore.getState().resend > 0 || appStore.getState().otpExpires > 0)
+          setAppState(p => ({
+            resend: Math.max(0, p.resend - 1),
+            otpExpires: Math.max(0, p.otpExpires - 1),
+          }));
       }, 1000);
       return () => clearInterval(iv);
     }, []),
@@ -42,13 +48,35 @@ export function OtpScreen() {
     if (current.length >= 6) return;
     const next = current + d;
     setAppState({ code: next });
-    if (next.length === 6)
-      advance.current = setTimeout(() => go('verifying'), 320);
+    if (next.length === 6) {
+      advance.current = setTimeout(() => {
+        if (isDemoMode()) {
+          go('verifying');
+          return;
+        }
+        void verifyMobileOtp(appStore.getState().phone, next)
+          .then(() => go('verifying'))
+          .catch((error: unknown) => {
+            setAppState({ code: '' });
+            flash(error instanceof Error ? error.message : 'That code was not accepted');
+          });
+      }, 320);
+    }
   };
   const erase = () => setAppState(p => ({ code: p.code.slice(0, -1) }));
   const resendCode = () => {
-    setAppState({ resend: 42, code: '' });
-    flash('New code sent to +234 ' + formatPhone(appStore.getState().phone));
+    if (appStore.getState().resend > 0) return;
+    if (isDemoMode()) {
+      setAppState({ resend: 42, code: '' });
+      flash('New code sent to +234 ' + formatPhone(appStore.getState().phone));
+      return;
+    }
+    void resendMobileOtp()
+      .then(info => {
+        setAppState({ resend: info.resendAfter || 42, otpExpires: info.expiresIn || 60, code: '' });
+        flash('A new code was submitted to +234 ' + formatPhone(appStore.getState().phone));
+      })
+      .catch((error: unknown) => flash(error instanceof Error ? error.message : 'Could not resend the code'));
   };
 
   return (
@@ -101,8 +129,11 @@ export function OtpScreen() {
       </View>
       <View style={styles.resendRow}>
         <Text style={styles.expiry}>
-          {resend > 0
-            ? 'Code expires in 0:' + String(resend).padStart(2, '0')
+          {expiryLeft > 0
+            ? 'Code expires in ' +
+              (expiryLeft >= 60
+                ? Math.floor(expiryLeft / 60) + ':' + String(expiryLeft % 60).padStart(2, '0')
+                : '0:' + String(expiryLeft).padStart(2, '0'))
             : 'Code expired'}
         </Text>
         <PressableScale onPress={resendCode} accessibilityRole="link">

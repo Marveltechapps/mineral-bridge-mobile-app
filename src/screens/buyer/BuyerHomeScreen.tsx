@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { Drop } from '../../components/common/animations';
 import { GradientText } from '../../components/common/GradientText';
 import { Icon } from '../../components/common/Icon';
@@ -13,7 +13,7 @@ import {
   SectionLabel,
 } from '../../components/common/ui';
 import { ScreenContainer } from '../../components/layout/ScreenContainer';
-import { CAT } from '../../lib/catalog';
+import { useBuyerCatalog } from '../../catalog/useBuyerCatalog';
 import { go, jump } from '../../navigation/flow';
 import { setAppState, useApp } from '../../context/appStore';
 import { shrink } from '../../utils/style';
@@ -57,6 +57,7 @@ const QUICK = [
 /** B1 · Buyer home — KYC nudge, verified-supply hero, shortcuts and categories. */
 export function BuyerHomeScreen() {
   const { guest, kyc } = useApp(s => ({ guest: s.guest, kyc: s.kyc }));
+  const catalog = useBuyerCatalog();
   const pending = kyc === 'pending';
   const startKyc = () => {
     setAppState({ sheet: null });
@@ -216,18 +217,27 @@ export function BuyerHomeScreen() {
         <Text style={styles.seeAll}>See all</Text>
       </View>
       <Grid columns={2} gap={13}>
-        {CAT.map(c => (
+        {catalog.categories.map(c => (
           <PressableScale
-            key={c.name}
-            onPress={() => go('bTypes')}
+            key={c.slug}
+            onPress={() => {
+              catalog.chooseCategory(c.slug);
+              go('bTypes');
+            }}
             style={styles.cat}
           >
-            <Photo name={c.img} style={styles.catImage} />
+            {c.imageUrl ? (
+              <Image source={{ uri: c.imageUrl }} style={styles.catImage} resizeMode="contain" />
+            ) : c.img ? (
+              <Photo name={c.img as 'cat-precious'} style={styles.catImage} />
+            ) : (
+              <View style={styles.catImage} />
+            )}
             <View style={styles.catBody}>
               <Text style={styles.catName} leading={1.25}>
                 {c.name}
               </Text>
-              <Text style={styles.catCount}>{c.count}</Text>
+              <Text style={styles.catCount}>{c.count || `${c.subcategories.length} subcategories`}</Text>
             </View>
           </PressableScale>
         ))}
@@ -449,7 +459,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     boxShadow: shadows.card,
   },
-  catImage: { height: 98, width: '100%' },
+  catImage: { height: 140, width: '100%', backgroundColor: '#eef1f6' },
   catBody: { paddingTop: 11, paddingHorizontal: 12, paddingBottom: 13 },
   catName: { fontSize: 14, fontWeight: '600', color: '#1a1f36' },
   catCount: {

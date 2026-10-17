@@ -23,7 +23,10 @@ export const ENDPOINTS = {
   },
   catalog: {
     categories: '/catalog/categories',
+    hierarchy: '/catalog/hierarchy',
+    subcategories: (category: string) => `/catalog/categories/${category}/subcategories`,
     types: (category: string) => `/catalog/categories/${category}/types`,
+    forms: (type: string) => `/catalog/types/${type}/forms`,
     products: (type: string) => `/catalog/types/${type}/products`,
     product: (id: string) => `/catalog/products/${id}`,
   },

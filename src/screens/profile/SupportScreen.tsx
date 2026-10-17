@@ -115,6 +115,7 @@ export function SupportScreen() {
           name="cat-industrial"
           style={styles.hero}
           imageStyle={styles.r14}
+          fit="cover"
         >
           <Scrim gradient="linear-gradient(165deg,rgba(14,20,48,0.62),rgba(20,29,64,0.95))" />
           <View style={styles.heroBody}>

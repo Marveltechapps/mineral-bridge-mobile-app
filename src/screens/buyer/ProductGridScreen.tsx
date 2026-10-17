@@ -1,21 +1,20 @@
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { GradientText } from '../../components/common/GradientText';
 import { Icon } from '../../components/common/Icon';
 import { PressableScale } from '../../components/common/PressableScale';
 import { Text } from '../../components/common/Text';
 import { Grid, Photo } from '../../components/common/ui';
 import { ScreenContainer } from '../../components/layout/ScreenContainer';
-import { PRODUCTS } from '../../lib/catalog';
+import { useBuyerCatalog } from '../../catalog/useBuyerCatalog';
 import { go } from '../../navigation/flow';
-import { setAppState, useApp } from '../../context/appStore';
+import { setAppState } from '../../context/appStore';
 import { gradients, shadows } from '../../theme';
 
-const CHIPS = ['All', 'Gold', 'Copper', 'Iron', 'Other'];
-
-/** B3 · Product grid — price and available quantity on every tile. */
+/** B3 · Product forms for the mineral type chosen on the previous screen. */
 export function ProductGridScreen() {
-  const chip = useApp(s => s.chip);
+  const catalog = useBuyerCatalog();
+  const chips = [{ slug: '', name: 'All' }, ...catalog.forms];
   return (
     <ScreenContainer screen="bProducts" contentStyle={styles.content}>
       <View style={styles.search}>
@@ -30,13 +29,13 @@ export function ProductGridScreen() {
         </Pressable>
       </View>
       <View style={styles.chips}>
-        {CHIPS.map(label => {
-          const a = chip === label;
+        {chips.map(label => {
+          const a = catalog.selection.productForm === label.slug;
           return (
             <PressableScale
-              key={label}
+              key={label.slug || 'all'}
               activeScale={0.94}
-              onPress={() => setAppState({ chip: label })}
+              onPress={() => catalog.chooseProductForm(label.slug)}
               accessibilityState={{ selected: a }}
               style={[
                 styles.chip,
@@ -56,25 +55,30 @@ export function ProductGridScreen() {
               <Text
                 style={[styles.chipText, { color: a ? '#fff' : '#606780' }]}
               >
-                {label}
+                {label.name}
               </Text>
             </PressableScale>
           );
         })}
       </View>
       <Grid columns={2} gap={13}>
-        {PRODUCTS.map(p => (
+        {catalog.products.map(p => (
           <PressableScale
-            key={p.name}
+            key={p.slug}
             onPress={() => go('bDetail')}
             style={styles.card}
           >
-            <Photo name={p.img} style={styles.image}>
+            <View style={styles.image}>
+              {p.imageUrl ? (
+                <Image source={{ uri: p.imageUrl }} style={styles.fill} resizeMode="contain" />
+              ) : p.img ? (
+                <Photo name={p.img as 'gold-dore'} style={styles.fill} />
+              ) : null}
               <View style={styles.verified}>
                 <Icon name="check" size={10} color="#16a34a" strokeWidth={3} />
                 <Text style={styles.verifiedText}>VERIFIED</Text>
               </View>
-            </Photo>
+            </View>
             <View style={styles.body}>
               <Text style={styles.name} leading={1.25}>
                 {p.name}
@@ -84,14 +88,17 @@ export function ProductGridScreen() {
                 style={styles.price}
                 containerStyle={styles.priceBox}
               >
-                {p.price}
+                {p.price || '—'}
               </GradientText>
               <Text style={styles.availLabel}>AVAILABLE</Text>
-              <Text style={styles.avail}>{p.avail}</Text>
+              <Text style={styles.avail}>{p.avail || '—'}</Text>
             </View>
           </PressableScale>
         ))}
       </Grid>
+      {catalog.products.length === 0 ? (
+        <Text style={styles.empty}>No product forms for this mineral type.</Text>
+      ) : null}
     </ScreenContainer>
   );
 }
@@ -113,9 +120,9 @@ const styles = StyleSheet.create({
     boxShadow: shadows.hairline,
   },
   searchText: { flex: 1, fontSize: 13, color: '#8890ad' },
-  chips: { flexDirection: 'row', gap: 8, marginBottom: 14 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
   chip: {
-    flex: 1,
+    paddingHorizontal: 12,
     height: 34,
     borderRadius: 9999,
     borderWidth: 1,
@@ -131,7 +138,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     boxShadow: shadows.card,
   },
-  image: { height: 104 },
+  image: { height: 168, backgroundColor: '#eef1f6' },
+  fill: { width: '100%', height: 168, backgroundColor: '#eef1f6' },
+  empty: { fontSize: 13.5, color: '#6b7290', marginTop: 8 },
   verified: {
     position: 'absolute',
     top: 8,
