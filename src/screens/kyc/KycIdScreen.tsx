@@ -14,7 +14,7 @@ import { setAppState, useApp } from '../../context/appStore';
 /** K2 · ID type — radio cards plus the matching ID number. */
 export function KycIdScreen() {
   const idType = useApp(s => s.idType);
-  const current = ID_TYPES[idType];
+  const current = idType >= 0 ? ID_TYPES[idType] : null;
   return (
     <ScreenContainer screen="kycId" contentStyle={styles.content}>
       <Text style={styles.title}>Which ID will you use?</Text>
@@ -27,7 +27,7 @@ export function KycIdScreen() {
           return (
             <PressableScale
               key={t.label}
-              onPress={() => setAppState({ idType: i })}
+              onPress={() => setAppState({ idType: on ? -1 : i })}
               accessibilityRole="radio"
               accessibilityState={{ checked: on }}
               style={[styles.card, { borderColor: on ? '#1e2a5a' : '#e5e7ec' }]}
@@ -55,12 +55,18 @@ export function KycIdScreen() {
           );
         })}
       </View>
-      <SectionLabel style={styles.label}>
-        {current.label.toUpperCase() + ' NUMBER'}
-      </SectionLabel>
-      <View style={styles.field}>
-        <Text style={styles.number}>{current.num}</Text>
-      </View>
+      {current ? (
+        <>
+          <SectionLabel style={styles.label}>
+            {current.label.toUpperCase() + ' NUMBER'}
+          </SectionLabel>
+          <View style={styles.field}>
+            <Text style={styles.number}>{current.num}</Text>
+          </View>
+        </>
+      ) : (
+        <Text style={styles.cardSub}>Select an ID type to continue.</Text>
+      )}
     </ScreenContainer>
   );
 }

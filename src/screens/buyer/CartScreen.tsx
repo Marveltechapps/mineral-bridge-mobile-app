@@ -50,7 +50,7 @@ export function CartScreen() {
   return (
     <ScreenContainer screen="cart" contentStyle={styles.content}>
       <View style={styles.items}>
-        {LINES.map(c => {
+        {LINES.filter(c => cart[c.key] > 0).map(c => {
           const q = cart[c.key];
           return (
             <FadeUp
@@ -69,7 +69,7 @@ export function CartScreen() {
                     <Pressable
                       onPress={() =>
                         setAppState(p => ({
-                          [c.key]: Math.max(5, p[c.key] - 5),
+                          [c.key]: Math.max(0, p[c.key] - 5),
                         }))
                       }
                       style={styles.dec}
@@ -107,6 +107,9 @@ export function CartScreen() {
           );
         })}
       </View>
+      {cart.cartA <= 0 && cart.cartB <= 0 ? (
+        <Text style={styles.empty}>Your cart is empty. Add a mineral before continuing.</Text>
+      ) : null}
       <View style={styles.totals}>
         {totals.map(r => (
           <View key={r.k} style={styles.totalRow}>
@@ -132,6 +135,7 @@ export function CartScreen() {
 const styles = StyleSheet.create({
   content: { paddingTop: 8, paddingHorizontal: 20, paddingBottom: 26 },
   items: { gap: 11 },
+  empty: { fontSize: 14, color: '#6b7290', marginTop: 8 },
   item: {
     backgroundColor: '#fff',
     borderWidth: 1,

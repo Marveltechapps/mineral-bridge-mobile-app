@@ -1,6 +1,51 @@
+import { matchesFilter } from '../src/catalog/gridFilter';
+import { loadDevicePreferences, saveDevicePreferences } from '../src/api/devicePrefs';
+import { assistantReply } from '../src/lib/hooks/useChat';
 import { compactDollars, dollars, formatMoney } from '../src/utils/format';
 import { appStore, initialState } from '../src/context/appStore';
 import { resolveMeta, tabHome } from '../src/navigation/screenMeta';
+
+describe('browse filters', () => {
+  it('hides a lot that matches neither the price nor the form', () => {
+    expect(
+      matchesFilter('Gold Concentrate', {
+        purity: [],
+        seller: [],
+        price: ['$65+'],
+        form: ['Bar'],
+        verifiedOnly: false,
+      }),
+    ).toBe(false);
+    expect(
+      matchesFilter('Gold Bullion Bar', {
+        purity: [],
+        seller: [],
+        price: ['$65+'],
+        form: ['Bar'],
+        verifiedOnly: false,
+      }),
+    ).toBe(true);
+  });
+});
+
+describe('assistant', () => {
+  it('points a payout question at Profile → Payouts', () => {
+    expect(assistantReply('How do I change my payout account?')).toMatch(/Profile then Payouts/);
+  });
+});
+
+describe('device preferences', () => {
+  it('keeps a chosen currency after the stored copy is read back', async () => {
+    const current = appStore.getState();
+    await saveDevicePreferences({
+      prefs: current.prefs,
+      prefsVal: { ...current.prefsVal, currency: 'EUR' },
+    });
+    appStore.reset();
+    const saved = await loadDevicePreferences();
+    expect(saved?.prefsVal.currency).toBe('EUR');
+  });
+});
 
 describe('format', () => {
   it('groups thousands like toLocaleString("en-US")', () => {

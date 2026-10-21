@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { PermissionsAndroid, Platform, StyleSheet, View } from 'react-native';
 import { Pop, ease } from '../../components/common/animations';
 import { Icon } from '../../components/common/Icon';
 import { Text } from '../../components/common/Text';
@@ -12,7 +12,7 @@ import {
 import { ScreenContainer } from '../../components/layout/ScreenContainer';
 import { ID_TYPES } from '../../lib/catalog';
 import { flash } from '../../navigation/flow';
-import { useApp } from '../../context/appStore';
+import { setAppState, useApp } from '../../context/appStore';
 
 const TIPS = [
   'All four corners inside the frame',
@@ -20,9 +20,31 @@ const TIPS = [
   'Text sharp enough to read',
 ];
 
+async function captureBack() {
+  if (Platform.OS === 'android') {
+    try {
+      const result = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.CAMERA,
+      );
+      if (result !== PermissionsAndroid.RESULTS.GRANTED) {
+        flash('Camera access is needed to photograph your ID');
+        return;
+      }
+    } catch {
+      flash('Camera access is needed to photograph your ID');
+      return;
+    }
+  }
+  setAppState({ docBack: true });
+  flash('Back side captured');
+}
+
 /** K3 · Document capture — front captured, back still to shoot. */
 export function KycDocScreen() {
-  const idShort = useApp(s => ID_TYPES[s.idType].label);
+  const { idShort, docBack } = useApp(s => ({
+    idShort: s.idType >= 0 ? ID_TYPES[s.idType].label : 'ID',
+    docBack: s.docBack,
+  }));
   return (
     <ScreenContainer screen="kycDoc" contentStyle={styles.content}>
       <Text style={styles.title}>{'Photograph your ' + idShort}</Text>
@@ -45,7 +67,9 @@ export function KycDocScreen() {
       </View>
       <SectionLabel style={styles.label}>BACK SIDE</SectionLabel>
       <DashedBox
-        onPress={() => flash('Back side captured')}
+        onPress={() => {
+          void captureBack();
+        }}
         style={styles.shoot}
       >
         <IconTile
@@ -56,8 +80,12 @@ export function KycDocScreen() {
           name="camera"
           iconSize={22}
         />
-        <Text style={styles.shootTitle}>Take a photo</Text>
-        <Text style={styles.shootSub}>or upload from your gallery</Text>
+        <Text style={styles.shootTitle}>
+          {docBack ? 'Back side captured' : 'Take a photo'}
+        </Text>
+        <Text style={styles.shootSub}>
+          {docBack ? 'Tap to retake' : 'or upload from your gallery'}
+        </Text>
       </DashedBox>
       <View style={styles.tips}>
         {TIPS.map(t => (

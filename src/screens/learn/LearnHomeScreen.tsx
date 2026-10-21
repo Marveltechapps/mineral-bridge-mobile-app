@@ -6,6 +6,7 @@ import { Text } from '../../components/common/Text';
 import { IconTile, Pill, SectionLabel } from '../../components/common/ui';
 import { ScreenContainer } from '../../components/layout/ScreenContainer';
 import { LEARN } from '../../lib/catalog';
+import { lessonIsDone } from '../../learn/progress';
 import { go } from '../../navigation/flow';
 import { setAppState, useApp } from '../../context/appStore';
 import { bg } from '../../utils/style';
@@ -53,17 +54,23 @@ const GROUPS = [
   },
 ];
 
-const tally = (idx: number[]) => ({
-  total: idx.reduce((n, i) => n + LEARN[i].lessons.length, 0),
-  done: idx.reduce(
-    (n, i) => n + LEARN[i].lessons.filter(l => l.done).length,
-    0,
-  ),
-});
-
 /** E1 · Learning Center — safety and trading tracks with per-track progress. */
 export function LearnHomeScreen() {
-  const learnTab = useApp(s => s.learnTab);
+  const { learnTab, doneLessons } = useApp(s => ({
+    learnTab: s.learnTab,
+    doneLessons: s.doneLessons,
+  }));
+  const tally = (idx: number[]) => ({
+    total: idx.reduce((n, i) => n + LEARN[i].lessons.length, 0),
+    done: idx.reduce(
+      (n, i) =>
+        n +
+        LEARN[i].lessons.filter((lesson, lessonIdx) =>
+          lessonIsDone(i, lessonIdx, lesson.done, doneLessons),
+        ).length,
+      0,
+    ),
+  });
   const active = GROUPS.find(g => g.key === learnTab) ?? GROUPS[0];
   const at = tally(active.idx);
 
@@ -151,20 +158,22 @@ export function LearnHomeScreen() {
               </PressableScale>
             </View>
             <View style={styles.lessons}>
-              {sec.lessons.map((l, li) => (
+              {sec.lessons.map((l, li) => {
+                const finished = lessonIsDone(si, li, l.done, doneLessons);
+                return (
                 <LessonRow
                   key={l.name}
                   name={l.name}
                   dur={l.dur}
-                  done={!!l.done}
-                  state={l.done ? 'Completed' : 'Not started'}
-                  stateFg={l.done ? '#15803d' : '#606780'}
+                  done={finished}
+                  state={finished ? 'Completed' : 'Not started'}
+                  stateFg={finished ? '#15803d' : '#606780'}
                   thumb={
                     <IconTile
                       size={48}
                       radius={10}
-                      bgColor={l.done ? '#e8f4ec' : '#f0f2f6'}
-                      color={l.done ? '#15803d' : '#33406e'}
+                      bgColor={finished ? '#e8f4ec' : '#f0f2f6'}
+                      color={finished ? '#15803d' : '#33406e'}
                       d={l.icon}
                       iconSize={20}
                     />
@@ -174,7 +183,8 @@ export function LearnHomeScreen() {
                     go('lPlayer');
                   }}
                 />
-              ))}
+                );
+              })}
             </View>
           </View>
         );

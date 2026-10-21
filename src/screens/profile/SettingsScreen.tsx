@@ -6,6 +6,7 @@ import { PressableScale } from '../../components/common/PressableScale';
 import { Text } from '../../components/common/Text';
 import { SectionLabel } from '../../components/common/ui';
 import { ScreenContainer } from '../../components/layout/ScreenContainer';
+import { saveDevicePreferences } from '../../api/devicePrefs';
 import { flash } from '../../navigation/flow';
 import {
   setAppState,
@@ -160,9 +161,11 @@ export function SettingsScreen() {
                 onPress={
                   r.kind === 'toggle'
                     ? () =>
-                        setAppState(p => ({
-                          prefs: { ...p.prefs, [r.key]: !p.prefs[r.key] },
-                        }))
+                        setAppState(p => {
+                          const prefs = { ...p.prefs, [r.key]: !p.prefs[r.key] };
+                          void saveDevicePreferences({ prefs, prefsVal: p.prefsVal });
+                          return { prefs };
+                        })
                     : r.onPress
                 }
                 accessibilityRole={r.kind === 'toggle' ? 'switch' : 'button'}

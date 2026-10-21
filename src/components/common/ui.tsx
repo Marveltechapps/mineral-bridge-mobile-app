@@ -7,6 +7,7 @@ import {
   Image,
   ImageBackground,
   StyleSheet,
+  TextInput,
   View,
   type ImageStyle,
   type StyleProp,
@@ -364,6 +365,7 @@ export function FieldBox({
   right,
   labelAccessory,
   note,
+  onChangeText,
 }: {
   label: string;
   value: string;
@@ -372,6 +374,7 @@ export function FieldBox({
   right?: React.ReactNode;
   labelAccessory?: React.ReactNode;
   note?: string;
+  onChangeText?: (value: string) => void;
 }) {
   return (
     <View>
@@ -380,9 +383,24 @@ export function FieldBox({
         {labelAccessory}
       </View>
       <View style={[styles.field, right ? styles.spread : null]}>
-        <Text style={{ fontSize: 14.5, fontWeight: weight, color }}>
-          {value}
-        </Text>
+        {onChangeText ? (
+          <TextInput
+            value={value}
+            onChangeText={onChangeText}
+            accessibilityLabel={label}
+            style={{
+              flex: 1,
+              fontSize: 14.5,
+              fontWeight: weight,
+              color,
+              padding: 0,
+            }}
+          />
+        ) : (
+          <Text style={{ fontSize: 14.5, fontWeight: weight, color }}>
+            {value}
+          </Text>
+        )}
         {right}
       </View>
       {note ? (
@@ -612,19 +630,23 @@ export function Scrim({ gradient, style }: { gradient: string } & Styled) {
 /** − value + stepper with g / kg / t unit chips (requirement and sell flows). */
 export function QtyStepper({
   qty,
+  qtyText,
   unitLabel,
   unit,
   onDec,
   onInc,
   onUnit,
+  onChangeText,
   footnote,
 }: {
   qty: number;
+  qtyText?: string;
   unitLabel: string;
   unit: string;
   onDec: () => void;
   onInc: () => void;
   onUnit: (u: 'g' | 'kg' | 't') => void;
+  onChangeText?: (value: string) => void;
   footnote?: string;
 }) {
   const units: ['g' | 'kg' | 't', string][] = [
@@ -642,8 +664,18 @@ export function QtyStepper({
         >
           <Icon name="minus" size={20} color="#1e2a5a" strokeWidth={2.5} />
         </PressableScale>
-        <View style={styles.center}>
-          <Text style={styles.qty}>{String(qty)}</Text>
+        <View style={styles.stepperCenter}>
+          {onChangeText ? (
+            <TextInput
+              value={qtyText ?? String(qty)}
+              onChangeText={onChangeText}
+              accessibilityLabel="Quantity"
+              keyboardType="numbers-and-punctuation"
+              style={styles.qty}
+            />
+          ) : (
+            <Text style={styles.qty}>{String(qty)}</Text>
+          )}
           <Text style={styles.unitLabel}>{unitLabel}</Text>
         </View>
         <PressableScale
@@ -986,6 +1018,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  stepperCenter: { flex: 1, alignItems: 'center' },
   stepDec: {
     width: 46,
     height: 46,

@@ -3,20 +3,24 @@ import { StyleSheet, View } from 'react-native';
 import { Text } from '../../components/common/Text';
 import { FieldBox, Pill } from '../../components/common/ui';
 import { ScreenContainer } from '../../components/layout/ScreenContainer';
-import { useApp } from '../../context/appStore';
+import { setAppState, useApp, type DeliveryDetails } from '../../context/appStore';
 
-const FIELDS = [
-  { label: 'FACILITY NAME', value: 'Aurora Refining Ltd.' },
-  { label: 'STREET ADDRESS', value: '14 Creek Road, Apapa' },
-  { label: 'CITY', value: 'Lagos' },
-  { label: 'STATE / REGION', value: 'Lagos State' },
-  { label: 'CONTACT PERSON', value: 'Adaeze Okafor' },
-  { label: 'CONTACT PHONE', value: '+234 802 441 9087' },
+const FIELDS: { key: keyof DeliveryDetails; label: string }[] = [
+  { key: 'facility', label: 'FACILITY NAME' },
+  { key: 'street', label: 'STREET ADDRESS' },
+  { key: 'city', label: 'CITY' },
+  { key: 'region', label: 'STATE / REGION' },
+  { key: 'contact', label: 'CONTACT PERSON' },
+  { key: 'phone', label: 'CONTACT PHONE' },
 ];
 
 /** B6 · Delivery & logistics — the import permit field appears for Tier 3 only. */
 export function DeliveryScreen() {
   const institutional = useApp(s => s.tierIdx === 2);
+  const delivery = useApp(s => s.delivery);
+  const edit =
+    (key: keyof DeliveryDetails) => (value: string) =>
+      setAppState(p => ({ delivery: { ...p.delivery, [key]: value } }));
   return (
     <ScreenContainer screen="bDeliv" contentStyle={styles.content}>
       <Text style={styles.title}>Where should we deliver?</Text>
@@ -25,12 +29,18 @@ export function DeliveryScreen() {
       </Text>
       <View style={styles.fields}>
         {FIELDS.map(f => (
-          <FieldBox key={f.label} label={f.label} value={f.value} />
+          <FieldBox
+            key={f.key}
+            label={f.label}
+            value={delivery[f.key]}
+            onChangeText={edit(f.key)}
+          />
         ))}
         {institutional ? (
           <FieldBox
             label="IMPORT PERMIT NUMBER"
-            value="NG-IMP-2026-44817"
+            value={delivery.permit}
+            onChangeText={edit('permit')}
             labelAccessory={
               <Pill
                 label="TIER 3"

@@ -5,7 +5,8 @@ import { PressableScale } from '../../components/common/PressableScale';
 import { Text } from '../../components/common/Text';
 import { IconTile, SectionLabel } from '../../components/common/ui';
 import { ScreenContainer } from '../../components/layout/ScreenContainer';
-import { flash } from '../../navigation/flow';
+import { go, flash } from '../../navigation/flow';
+import { setAppState } from '../../context/appStore';
 
 const NOTIFS = [
   {
@@ -78,7 +79,14 @@ export function NotificationsScreen() {
           <FadeUp key={n.title} duration={500} delay={n.delay}>
             <PressableScale
               activeScale={0.985}
-              onPress={() => flash('Opening notification')}
+              onPress={() => {
+                if (n.title.startsWith('You have been outbid')) {
+                  setAppState({ banner: true });
+                  go('aDetail');
+                  return;
+                }
+                flash('Opening notification');
+              }}
               style={[
                 styles.card,
                 {

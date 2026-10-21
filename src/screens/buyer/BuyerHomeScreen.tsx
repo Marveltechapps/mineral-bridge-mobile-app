@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, Pressable, StyleSheet, View } from 'react-native';
+import { Image, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { Drop } from '../../components/common/animations';
 import { GradientText } from '../../components/common/GradientText';
 import { Icon } from '../../components/common/Icon';
@@ -13,7 +13,9 @@ import {
   SectionLabel,
 } from '../../components/common/ui';
 import { ScreenContainer } from '../../components/layout/ScreenContainer';
+import { matchesQuery } from '../../catalog/gridFilter';
 import { useBuyerCatalog } from '../../catalog/useBuyerCatalog';
+import { PRODUCTS } from '../../lib/catalog';
 import { go, jump } from '../../navigation/flow';
 import { setAppState, useApp } from '../../context/appStore';
 import { shrink } from '../../utils/style';
@@ -56,7 +58,12 @@ const QUICK = [
 
 /** B1 · Buyer home — KYC nudge, verified-supply hero, shortcuts and categories. */
 export function BuyerHomeScreen() {
-  const { guest, kyc } = useApp(s => ({ guest: s.guest, kyc: s.kyc }));
+  const { guest, kyc, browseQuery, displayName } = useApp(s => ({
+    guest: s.guest,
+    kyc: s.kyc,
+    browseQuery: s.browseQuery,
+    displayName: s.displayName,
+  }));
   const catalog = useBuyerCatalog();
   const pending = kyc === 'pending';
   const startKyc = () => {
@@ -133,19 +140,31 @@ export function BuyerHomeScreen() {
       <View style={styles.greeting}>
         <View style={shrink}>
           <Text style={styles.hello}>Good morning</Text>
-          <Text style={styles.name}>Adaeze Okafor</Text>
+          <Text style={styles.name}>{displayName}</Text>
         </View>
-        <View style={styles.bell} accessibilityLabel="3 unread notifications">
+        <Pressable
+          onPress={() => go('notifs')}
+          style={styles.bell}
+          accessibilityLabel="Notifications"
+          accessibilityRole="button"
+        >
           <Icon name="bell" size={19} color="#1e2a5a" />
           <View style={styles.badge}>
             <Text style={styles.badgeText}>3</Text>
           </View>
-        </View>
+        </Pressable>
       </View>
 
       <View style={styles.search}>
         <Icon name="search" size={18} color="#8890ad" />
-        <Text style={styles.searchText}>Search gold, cobalt, lithium…</Text>
+        <TextInput
+          value={browseQuery}
+          onChangeText={text => setAppState({ browseQuery: text })}
+          placeholder="Search gold, cobalt, lithium…"
+          placeholderTextColor="#8890ad"
+          style={styles.searchText}
+          accessibilityLabel="Search minerals"
+        />
       </View>
 
       <View style={styles.heroShadow}>
@@ -217,7 +236,9 @@ export function BuyerHomeScreen() {
         <Text style={styles.seeAll}>See all</Text>
       </View>
       <Grid columns={2} gap={13}>
-        {catalog.categories.map(c => (
+        {catalog.categories
+          .filter(c => matchesQuery(c.name, browseQuery))
+          .map(c => (
           <PressableScale
             key={c.slug}
             onPress={() => {
@@ -242,6 +263,23 @@ export function BuyerHomeScreen() {
           </PressableScale>
         ))}
       </Grid>
+      <SectionLabel style={styles.featuredLabel}>FEATURED</SectionLabel>
+      <View style={styles.featured}>
+        {PRODUCTS.filter(p => matchesQuery(p.name, browseQuery)).map(p => (
+          <PressableScale
+            key={p.name}
+            onPress={() => go('bDetail')}
+            style={styles.featuredCard}
+          >
+            <Text style={styles.featuredName}>{p.name}</Text>
+            <Text style={styles.featuredPrice}>{p.price}</Text>
+          </PressableScale>
+        ))}
+      </View>
+      {catalog.categories.filter(c => matchesQuery(c.name, browseQuery)).length === 0 &&
+      PRODUCTS.filter(p => matchesQuery(p.name, browseQuery)).length === 0 ? (
+        <Text style={styles.empty}>No minerals match that search.</Text>
+      ) : null}
     </ScreenContainer>
   );
 }
@@ -355,7 +393,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     boxShadow: shadows.hairline,
   },
-  searchText: { fontSize: 13.5, color: '#8890ad' },
+  searchText: { flex: 1, fontSize: 13.5, color: '#1a1f36', padding: 0 },
+  featuredLabel: { marginTop: 20, marginBottom: 10 },
+  featured: { gap: 8 },
+  featuredCard: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e5e7ec',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  featuredName: { fontSize: 14, fontWeight: '600', color: '#1a1f36' },
+  featuredPrice: { fontSize: 12, color: '#6b7290', marginTop: 3 },
+  empty: { fontSize: 13.5, color: '#6b7290', marginTop: 12 },
   heroShadow: {
     marginTop: 16,
     borderRadius: 14,

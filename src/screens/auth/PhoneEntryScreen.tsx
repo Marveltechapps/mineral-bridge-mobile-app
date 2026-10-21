@@ -10,11 +10,13 @@ import { appStore, setAppState } from '../../context/appStore';
 import { shadows } from '../../theme';
 import { Keypad } from '../../components/auth/Keypad';
 import { usePhone } from '../../lib/hooks/usePhone';
+import { DevLoginPanel } from './DevLoginPanel';
 
 /** 0.3 Sign up · number and 0.6 Log in · number (same keypad, shorter copy). */
 export function PhoneEntryScreen({ mode }: { mode: 'signupPhone' | 'login' }) {
   const { display, color } = usePhone();
   const login = mode === 'login';
+  const [devOpen, setDevOpen] = React.useState(false);
   const typeDigit = (d: string) => {
     if (appStore.getState().phone.length >= 10) return;
     setAppState(p => ({ phone: p.phone + d }));
@@ -59,7 +61,8 @@ export function PhoneEntryScreen({ mode }: { mode: 'signupPhone' | 'login' }) {
         <Text style={styles.help}>Trouble signing in?</Text>
       </PressableScale>
       <View style={styles.spacer} />
-      <Keypad onDigit={typeDigit} onDelete={erase} />
+      {login ? <DevLoginPanel onOpenChange={setDevOpen} /> : null}
+      {devOpen ? null : <Keypad onDigit={typeDigit} onDelete={erase} />}
     </ScreenContainer>
   );
 }

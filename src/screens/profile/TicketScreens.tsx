@@ -52,6 +52,7 @@ const inputFont = {
 export function TicketScreen() {
   const [reply, setReply] = useState('');
   const send = () => {
+    if (!reply.trim()) return;
     flash('Reply sent to the support desk');
     setReply('');
   };
@@ -125,8 +126,10 @@ const TOPICS = [
 
 /** P2b · New ticket — topic chips, related request and description. */
 export function NewTicketScreen() {
-  const topic = useApp(s => s.topic);
-  const [description, setDescription] = useState('');
+  const { topic, description } = useApp(s => ({
+    topic: s.topic,
+    description: s.ticketDraft,
+  }));
   return (
     <ScreenContainer
       screen="newTicket"
@@ -172,7 +175,7 @@ export function NewTicketScreen() {
       <View style={styles.describe}>
         <TextInput
           value={description}
-          onChangeText={setDescription}
+          onChangeText={text => setAppState({ ticketDraft: text })}
           placeholder="Tell us what happened and what you expected…"
           placeholderTextColor="#a3abc4"
           selectionColor="#1e2a5a"

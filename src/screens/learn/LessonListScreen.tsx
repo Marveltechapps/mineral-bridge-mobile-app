@@ -4,6 +4,7 @@ import { Text } from '../../components/common/Text';
 import { SectionLabel } from '../../components/common/ui';
 import { ScreenContainer } from '../../components/layout/ScreenContainer';
 import { LEARN } from '../../lib/catalog';
+import { lessonIsDone } from '../../learn/progress';
 import { go } from '../../navigation/flow';
 import { setAppState, useApp } from '../../context/appStore';
 import { shadows } from '../../theme';
@@ -28,10 +29,17 @@ const titleCase = (label: string) =>
 
 /** E2 · Lesson list — category progress and duration tags. */
 export function LessonListScreen() {
-  const catIdx = useApp(s => s.catIdx);
+  const { catIdx, doneLessons } = useApp(s => ({
+    catIdx: s.catIdx,
+    doneLessons: s.doneLessons,
+  }));
   const sec = LEARN[catIdx] ?? LEARN[0];
+  const flags = sec.lessons.map((lesson, i) =>
+    lessonIsDone(catIdx, i, lesson.done, doneLessons),
+  );
   const total = sec.lessons.length;
-  const done = sec.lessons.filter(l => l.done).length;
+  const done = flags.filter(Boolean).length;
+  const nextIdx = flags.findIndex(finished => !finished);
   return (
     <ScreenContainer screen="lList" contentStyle={styles.content}>
       <View style={styles.card}>
@@ -56,21 +64,22 @@ export function LessonListScreen() {
       </SectionLabel>
       <View style={styles.lessons}>
         {sec.lessons.map((l, i) => {
-          const next = i === done;
+          const finished = flags[i];
+          const next = i === nextIdx;
           return (
             <LessonRow
               key={l.name}
               name={l.name}
               dur={l.dur}
-              done={!!l.done}
-              state={l.done ? 'Completed' : next ? 'Up next' : 'Not started'}
-              stateFg={l.done ? '#15803d' : next ? '#2563eb' : '#8890ad'}
+              done={finished}
+              state={finished ? 'Completed' : next ? 'Up next' : 'Not started'}
+              stateFg={finished ? '#15803d' : next ? '#2563eb' : '#8890ad'}
               thumb={
                 <View
                   style={[
                     styles.thumb,
                     {
-                      backgroundColor: l.done
+                      backgroundColor: finished
                         ? '#e8f4ec'
                         : next
                         ? '#1e2a5a'
@@ -81,7 +90,7 @@ export function LessonListScreen() {
                   <Text
                     style={[
                       styles.thumbText,
-                      { color: l.done ? '#15803d' : next ? '#fff' : '#8890ad' },
+                      { color: finished ? '#15803d' : next ? '#fff' : '#8890ad' },
                     ]}
                   >
                     {String(i + 1)}

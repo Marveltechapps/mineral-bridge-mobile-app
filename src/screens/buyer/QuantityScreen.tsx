@@ -33,11 +33,13 @@ export function QuantityScreen() {
       <SectionLabel style={styles.label22}>AVAILABLE QUANTITY</SectionLabel>
       <QtyStepper
         qty={q.qty}
+        qtyText={q.qtyText}
         unit={q.unit}
         unitLabel={q.unitLabel}
         onDec={q.dec}
         onInc={q.inc}
         onUnit={q.setUnit}
+        onChangeText={q.setText}
         footnote="Seller has 4.2 kg in the Lagos vault. Larger volumes are sourced within 14 days."
       />
       <SectionLabel style={styles.label22}>ACCOUNT TIER</SectionLabel>

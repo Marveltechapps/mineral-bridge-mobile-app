@@ -11,32 +11,41 @@ import {
   SectionLabel,
 } from '../../components/common/ui';
 import { ScreenContainer } from '../../components/layout/ScreenContainer';
-import { setAppState, useApp } from '../../context/appStore';
+import { setAppState, useApp, type BulkDraft } from '../../context/appStore';
 import { shadows } from '../../theme';
 
-const FIELDS = [
-  { label: 'FACILITY NAME', value: 'Ilesha Consolidated Minerals Ltd.' },
-  { label: 'STREET ADDRESS', value: 'Plot 7, Ijebu-Jesa Industrial Way' },
-  { label: 'CITY', value: 'Ilesha' },
-  { label: 'STATE / REGION', value: 'Osun State' },
-  { label: 'CONTACT PERSON', value: 'Tunde Balogun' },
-  { label: 'CONTACT PHONE', value: '+234 703 118 2260' },
+const FIELDS: { key: keyof BulkDraft; label: string }[] = [
+  { key: 'facility', label: 'FACILITY NAME' },
+  { key: 'street', label: 'STREET ADDRESS' },
+  { key: 'city', label: 'CITY' },
+  { key: 'region', label: 'STATE / REGION' },
+  { key: 'contact', label: 'CONTACT PERSON' },
+  { key: 'phone', label: 'CONTACT PHONE' },
 ];
 
 /** C9 · Bulk intake 2 — facility, export permit, compliance and proof of address. */
 export function BulkStep2Screen() {
   const ack = useApp(s => s.ack);
+  const bulk = useApp(s => s.bulk);
   const tone = ack ? '#16a34a' : '#c9cdd8';
+  const edit = (key: keyof BulkDraft) => (value: string) =>
+    setAppState(p => ({ bulk: { ...p.bulk, [key]: value } }));
   return (
     <ScreenContainer screen="iStep2" contentStyle={styles.content}>
       <Text style={styles.title}>Where is this lot held?</Text>
       <View style={styles.fields}>
         {FIELDS.map(f => (
-          <FieldBox key={f.label} label={f.label} value={f.value} />
+          <FieldBox
+            key={f.key}
+            label={f.label}
+            value={bulk[f.key]}
+            onChangeText={edit(f.key)}
+          />
         ))}
         <FieldBox
           label="EXPORT PERMIT NUMBER"
-          value="NG-EXP-2026-11204"
+          value={bulk.permit}
+          onChangeText={edit('permit')}
           labelAccessory={
             <Pill
               label="REQUIRED"

@@ -1,5 +1,5 @@
-import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import React, { useState } from 'react';
+import { StyleSheet, TextInput, View } from 'react-native';
 import { Pop, ease } from '../common/animations';
 import { PrimaryButton, SecondaryButton } from '../common/Button';
 import { Icon } from '../common/Icon';
@@ -7,6 +7,21 @@ import { BottomSheet, Scrim } from '../common/Modal';
 import { PressableScale } from '../common/PressableScale';
 import { Text } from '../common/Text';
 import { CheckBadge, IconTile, RadioDot, SectionLabel } from '../common/ui';
+import { isApiError } from '../../api';
+import {
+  deleteMobileAccount,
+  isDemoMode,
+  signOutMobile,
+} from '../../api/auth';
+import { clearSession } from '../../api/session';
+import { saveDevicePreferences } from '../../api/devicePrefs';
+import {
+  DESIGN_FILTER,
+  EMPTY_FILTER,
+  type GridFilter,
+} from '../../catalog/gridFilter';
+import { ORDERS } from '../../lib/catalog';
+import { bidIsHighEnough, MIN_BID_AMOUNT } from '../../navigation/ctaActions';
 import { flash, go, jump } from '../../navigation/flow';
 import {
   appStore,
@@ -58,7 +73,7 @@ function SigninSheet() {
     setAppState({
       guest: false,
       authMode: 'login',
-      phone: '8024419087',
+      phone: isDemoMode() ? '8024419087' : '',
       code: '',
       sheet: null,
     });
@@ -142,7 +157,15 @@ function PickerSheet() {
     picker: s.picker,
     prefsVal: s.prefsVal,
   }));
-  const cur = prefsVal[picker];
+  const [draft, setDraft] = useState(prefsVal[picker]);
+  const cur = draft;
+  const confirm = () => {
+    setAppState(p => {
+      const prefsVal = { ...p.prefsVal, [p.picker]: draft };
+      void saveDevicePreferences({ prefs: p.prefs, prefsVal });
+      return { prefsVal, sheet: null };
+    });
+  };
   return (
     <BottomSheet radius={18}>
       <Text style={styles.title185}>{PICKER[picker].title}</Text>
@@ -153,11 +176,7 @@ function PickerSheet() {
             <PressableScale
               key={label}
               activeScale={0.985}
-              onPress={() =>
-                setAppState(p => ({
-                  prefsVal: { ...p.prefsVal, [p.picker]: label },
-                }))
-              }
+              onPress={() => setDraft(label)}
               accessibilityRole="radio"
               accessibilityState={{ checked: on }}
               style={[
@@ -185,7 +204,7 @@ function PickerSheet() {
       </View>
       <PrimaryButton
         label="Done"
-        onPress={close}
+        onPress={confirm}
         height={52}
         pressScale={1}
         shadow={false}
@@ -197,20 +216,66 @@ function PickerSheet() {
 }
 
 /** Log out or delete-account confirmation. */
+function endSession() {
+  clearSession();
+  setAppState({
+    sheet: null,
+    guest: false,
+    kyc: 'none',
+    signedIn: false,
+    authMode: 'signup',
+    phone: '',
+    code: '',
+    introOpen: 0,
+    onboardingNext: '',
+  });
+  jump('welcome');
+}
+
+function openOrdersRemain(): boolean {
+  const delivered = appStore.getState().deliveredIds;
+  return ORDERS.some(order => order.tone !== 'done' && !delivered.includes(order.id));
+}
+
 function DangerSheet() {
   const del = useApp(s => s.danger === 'delete');
+  const [pin, setPin] = useState('');
   const confirm = () => {
-    setAppState({
-      sheet: null,
-      guest: false,
-      kyc: 'none',
-      tierIdx: 0,
-      authMode: 'signup',
-      phone: '',
-      code: '',
-      introOpen: 0,
-    });
-    jump('welcome');
+    if (!del) {
+      if (isDemoMode()) {
+        endSession();
+        return;
+      }
+      void signOutMobile()
+        .catch(() => undefined)
+        .finally(endSession);
+      return;
+    }
+    if (isDemoMode()) {
+      if (openOrdersRemain()) {
+        setAppState({ sheet: null });
+        flash('Active orders must be settled before you can delete your account.');
+        return;
+      }
+      endSession();
+      return;
+    }
+    if (!pin.trim()) {
+      flash('Enter your transaction PIN');
+      return;
+    }
+    void deleteMobileAccount(pin.trim())
+      .then(endSession)
+      .catch((error: unknown) => {
+        flash(
+          error instanceof Error
+            ? error.message
+            : 'Could not delete the account',
+        );
+        if (isApiError(error) && error.status === 409) {
+          setAppState({ sheet: null });
+        }
+      });
   };
   return (
     <BottomSheet radius={18}>
@@ -236,6 +301,19 @@ function DangerSheet() {
           ? 'This removes your listings, bids and documents permanently. Active orders must be settled first.'
           : 'Your listings and bids stay live. You will need your phone number and a new code to sign back in.'}
       </Text>
+      {del && !isDemoMode() ? (
+        <TextInput
+          value={pin}
+          onChangeText={setPin}
+          placeholder="Transaction PIN"
+          placeholderTextColor="#a3abc4"
+          keyboardType="number-pad"
+          secureTextEntry
+          maxLength={6}
+          style={styles.pin}
+          accessibilityLabel="Transaction PIN"
+        />
+      ) : null}
       <PrimaryButton
         label={del ? 'Delete permanently' : 'Log out'}
         onPress={confirm}
@@ -374,8 +452,12 @@ function HelpSheet() {
 function BidSheet() {
   const bid = useApp(s => s.bid);
   const confirm = () => {
+    if (!bidIsHighEnough(bid)) {
+      flash('Bid must be at least $' + MIN_BID_AMOUNT.toLocaleString('en-US'));
+      return;
+    }
     setAppState({ sheet: null });
-    flash('Bid placed — $48,400 on Cobalt Hydroxide');
+    flash('Bid placed — $' + bid.toLocaleString('en-US') + ' on Cobalt Hydroxide');
   };
   return (
     <BottomSheet>
@@ -417,9 +499,19 @@ function BidSheet() {
   );
 }
 
-function Chip({ label, on }: { label: string; on: boolean }) {
+function Chip({
+  label,
+  on,
+  onPress,
+}: {
+  label: string;
+  on: boolean;
+  onPress: () => void;
+}) {
   return (
-    <View
+    <PressableScale
+      onPress={onPress}
+      accessibilityState={{ selected: on }}
       style={[
         styles.filterChip,
         on ? styles.filterChipOn : styles.filterChipOff,
@@ -433,39 +525,99 @@ function Chip({ label, on }: { label: string; on: boolean }) {
       >
         {label}
       </Text>
-    </View>
+    </PressableScale>
   );
 }
 
-/** Product grid filters. */
+function toggle(list: string[], value: string): string[] {
+  return list.includes(value) ? list.filter(item => item !== value) : list.concat(value);
+}
+
+/** Product grid filters. Choices stay local until Apply; the scrim discards them. */
 function FilterSheet() {
+  const [draft, setDraft] = useState<GridFilter>(DESIGN_FILTER);
+  const setPurity = (value: string) =>
+    setDraft(current => ({ ...current, purity: toggle(current.purity, value) }));
+  const setSeller = (value: string) =>
+    setDraft(current => ({ ...current, seller: toggle(current.seller, value) }));
+  const setPrice = (value: string) =>
+    setDraft(current => ({ ...current, price: toggle(current.price, value) }));
+  const setForm = (value: string) =>
+    setDraft(current => ({ ...current, form: toggle(current.form, value) }));
   return (
     <BottomSheet>
       <View style={styles.filterHead}>
         <Text style={styles.title19}>Filters</Text>
-        <Text style={styles.reset}>Reset</Text>
+        <PressableScale onPress={() => setDraft(EMPTY_FILTER)} accessibilityRole="button">
+          <Text style={styles.reset}>Reset</Text>
+        </PressableScale>
       </View>
       <SectionLabel style={styles.filterLabel}>PURITY</SectionLabel>
       <View style={styles.chips}>
-        <Chip label="22K+" on />
-        <Chip label="18K – 22K" on={false} />
-        <Chip label="Under 18K" on={false} />
+        {['22K+', '18K – 22K', 'Under 18K'].map(label => (
+          <Chip
+            key={label}
+            label={label}
+            on={draft.purity.includes(label)}
+            onPress={() => setPurity(label)}
+          />
+        ))}
+      </View>
+      <SectionLabel style={styles.filterLabel}>PRICE</SectionLabel>
+      <View style={styles.chips}>
+        {['Under $50', '$50 – $65', '$65+'].map(label => (
+          <Chip
+            key={label}
+            label={label}
+            on={draft.price.includes(label)}
+            onPress={() => setPrice(label)}
+          />
+        ))}
+      </View>
+      <SectionLabel style={styles.filterLabel}>FORM</SectionLabel>
+      <View style={styles.chips}>
+        {['Bar', 'Concentrate', 'Dust', 'Grain', 'Biscuit'].map(label => (
+          <Chip
+            key={label}
+            label={label}
+            on={draft.form.includes(label)}
+            onPress={() => setForm(label)}
+          />
+        ))}
       </View>
       <SectionLabel style={styles.filterLabel}>SELLER TIER</SectionLabel>
       <View style={styles.chips}>
-        <Chip label="Artisanal" on={false} />
-        <Chip label="Cooperative" on />
-        <Chip label="Registered" on />
+        {['Artisanal', 'Cooperative', 'Registered'].map(label => (
+          <Chip
+            key={label}
+            label={label}
+            on={draft.seller.includes(label)}
+            onPress={() => setSeller(label)}
+          />
+        ))}
       </View>
-      <View style={styles.verifiedRow}>
+      <PressableScale
+        onPress={() =>
+          setDraft(current => ({ ...current, verifiedOnly: !current.verifiedOnly }))
+        }
+        style={styles.verifiedRow}
+        accessibilityRole="switch"
+        accessibilityState={{ checked: draft.verifiedOnly }}
+      >
         <Text style={styles.verifiedText}>Verified lots only</Text>
-        <View style={styles.toggle}>
+        <View
+          style={[
+            styles.toggle,
+            { backgroundColor: draft.verifiedOnly ? '#16a34a' : '#dfe2e9' },
+            draft.verifiedOnly ? styles.toggleOn : styles.toggleOff,
+          ]}
+        >
           <View style={styles.knob} />
         </View>
-      </View>
+      </PressableScale>
       <PrimaryButton
-        label="Show 12 results"
-        onPress={close}
+        label="Apply"
+        onPress={() => setAppState({ appliedFilter: draft, sheet: null })}
         style={styles.mt18}
       />
     </BottomSheet>
@@ -531,6 +683,19 @@ const styles = StyleSheet.create({
   dangerButton: {
     experimental_backgroundImage: 'linear-gradient(180deg,#e04141,#c0392b)',
     borderColor: '#a52f22',
+  },
+  pin: {
+    marginTop: 16,
+    height: 52,
+    borderRadius: 11,
+    borderWidth: 1.5,
+    borderColor: '#1e2a5a',
+    backgroundColor: '#f4f5f7',
+    paddingHorizontal: 16,
+    fontSize: 18,
+    fontWeight: '700',
+    letterSpacing: 4,
+    color: '#1a1f36',
   },
   helpList: { marginTop: 18, gap: 10 },
   helpRow: {
@@ -625,10 +790,10 @@ const styles = StyleSheet.create({
     width: 48,
     height: 28,
     borderRadius: 11,
-    backgroundColor: '#16a34a',
     padding: 3,
     flexDirection: 'row',
-    justifyContent: 'flex-end',
   },
+  toggleOn: { justifyContent: 'flex-end' },
+  toggleOff: { justifyContent: 'flex-start' },
   knob: { width: 22, height: 22, borderRadius: 9, backgroundColor: '#fff' },
 });

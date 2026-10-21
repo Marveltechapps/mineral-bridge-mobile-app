@@ -507,6 +507,10 @@ export function resolveMeta(screen: ScreenId, st: MetaState): ResolvedMeta {
       cta2: st.guest ? 'Browse as a guest' : '',
     };
   }
+  // "Simulate: auction ends" is a design control. Release builds hide it.
+  if (screen === 'aDetail' && !__DEV__) {
+    base = { ...base, cta2: '', next2: undefined };
+  }
   if (GATED[screen] && (st.guest || st.kyc !== 'verified')) {
     base = {
       ...base,

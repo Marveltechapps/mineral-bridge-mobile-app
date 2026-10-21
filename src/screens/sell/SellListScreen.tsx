@@ -79,11 +79,13 @@ export function SellListScreen() {
       <SectionLabel style={styles.label22}>QUANTITY</SectionLabel>
       <QtyStepper
         qty={q.qty}
+        qtyText={q.qtyText}
         unit={q.unit}
         unitLabel={q.unitLabel}
         onDec={q.dec}
         onInc={q.inc}
         onUnit={q.setUnit}
+        onChangeText={q.setText}
       />
 
       <SectionLabel style={styles.label22}>MINERAL TYPE</SectionLabel>

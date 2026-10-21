@@ -1,5 +1,6 @@
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import App from '../App';
 import { navigationRef } from '../src/navigation/flow';
 import { SCREEN_IDS, type ScreenId } from '../src/navigation/types';
@@ -33,13 +34,20 @@ async function open(id: ScreenId) {
 }
 
 describe('App', () => {
-  beforeEach(() => appStore.reset());
+  beforeEach(async () => {
+    appStore.reset();
+    await AsyncStorage.clear();
+  });
 
   it('hands the splash off to Welcome after 2 seconds', async () => {
     await renderApp();
     expect(screen.getByText('VERIFIED MINERAL TRADE')).toBeTruthy();
     await act(async () => {
       jest.advanceTimersByTime(2100);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
     });
     expect(screen.getByText('We buy your minerals.')).toBeTruthy();
     expect(screen.getByText('Create an account')).toBeTruthy();
@@ -75,7 +83,7 @@ describe('App', () => {
   it('asks unverified users to verify before buying', async () => {
     await renderApp();
     await open('bDetail');
-    await fireEvent.press(screen.getByText('Buy Now'));
+    await fireEvent.press(screen.getByText('Verify identity to continue'));
     await act(async () => jest.advanceTimersByTime(400));
     expect(screen.getByText('Verify your identity first')).toBeTruthy();
     await fireEvent.press(screen.getByText('Not right now'));
@@ -85,11 +93,31 @@ describe('App', () => {
   it('steps the quantity and switches units', async () => {
     await renderApp();
     await open('bQty');
-    expect(screen.getByText('250')).toBeTruthy();
+    expect(screen.getByDisplayValue('250')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('Increase quantity'));
-    expect(screen.getByText('300')).toBeTruthy();
+    expect(screen.getByDisplayValue('300')).toBeTruthy();
     await fireEvent.press(screen.getByText('Tonnes'));
     expect(screen.getByText('TONNES')).toBeTruthy();
+  });
+
+  it('reviews the quantity and address that were entered', async () => {
+    appStore.setState({
+      kyc: 'verified',
+      qty: 5,
+      qtyText: '5',
+      unit: 'kg',
+      delivery: {
+        ...appStore.getState().delivery,
+        facility: 'Test Refinery',
+        street: '5 Marina',
+        city: 'Lagos',
+      },
+    });
+    await renderApp();
+    await open('bReview');
+    expect(screen.getByText('5 kg · $61.40 / g')).toBeTruthy();
+    expect(screen.getByText(/5 Marina/)).toBeTruthy();
+    expect(screen.getByText(/Test Refinery/)).toBeTruthy();
   });
 
   it('switches tabs from the tab bar', async () => {
@@ -137,7 +165,10 @@ describe('App', () => {
     await fireEvent.press(screen.getByText('Currency'));
     await act(async () => jest.advanceTimersByTime(400));
     await fireEvent.press(screen.getByText('EUR'));
+    expect(appStore.getState().prefsVal.currency).toBe('USD');
+    await fireEvent.press(screen.getByText('Done'));
     expect(appStore.getState().prefsVal.currency).toBe('EUR');
+    expect(appStore.getState().sheet).toBeNull();
   });
 
   describe('every screen renders', () => {
@@ -146,7 +177,7 @@ describe('App', () => {
       tier: 'Your tier',
       kycId: 'Which ID will you use?',
       bHome: 'Adaeze Okafor',
-      bDetail: 'Buy Now',
+      bDetail: 'Verify identity to continue',
       sEstimate: 'MINERAL BRIDGE WILL PAY YOU',
       aDetail: 'TIME REMAINING',
       lPlayer: 'CHAPTERS',

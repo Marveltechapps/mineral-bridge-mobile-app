@@ -9,6 +9,9 @@ import {
 } from '../../components/common/animations';
 import { PressableScale } from '../../components/common/PressableScale';
 import { Text } from '../../components/common/Text';
+import { loadDevicePreferences } from '../../api/devicePrefs';
+import { restoreSignedInDestination } from '../../api/restoreSession';
+import { appStore } from '../../context/appStore';
 import { jump } from '../../navigation/flow';
 import { gradients } from '../../theme';
 
@@ -18,7 +21,12 @@ export function SplashScreen() {
   const toWelcome = () => {
     if (done.current) return;
     done.current = true;
-    jump('welcome');
+    void Promise.all([restoreSignedInDestination(), loadDevicePreferences()]).then(
+      ([screen, prefs]) => {
+        if (prefs) appStore.setState(prefs);
+        jump(screen);
+      },
+    );
   };
   useEffect(() => {
     const t = setTimeout(toWelcome, 2000);

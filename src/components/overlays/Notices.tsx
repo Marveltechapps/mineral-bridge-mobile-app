@@ -7,8 +7,9 @@ import { Icon } from '../common/Icon';
 import { PressableScale } from '../common/PressableScale';
 import { Text } from '../common/Text';
 import { IconTile } from '../common/ui';
+import { openBidSheet } from '../../navigation/ctaActions';
 import { navigationRef } from '../../navigation/flow';
-import { setAppState, useApp } from '../../context/appStore';
+import { useApp } from '../../context/appStore';
 import { gradients, layout, shadows } from '../../theme';
 
 /** Green confirmation toast, docked above the CTA well / tab bar. */
@@ -48,7 +49,7 @@ export function OutbidBanner() {
   const insets = useSafeAreaInsets();
   if (!banner) return null;
   const bidAgain = () => {
-    setAppState({ banner: false, sheet: 'bid' });
+    openBidSheet();
     if (
       navigationRef.isReady() &&
       navigationRef.getCurrentRoute()?.name !== 'aDetail'
@@ -65,7 +66,7 @@ export function OutbidBanner() {
         { top: Math.max(layout.statusBar, insets.top) + 6 },
       ]}
     >
-      <View style={styles.banner} accessibilityRole="alert">
+      <PressableScale onPress={bidAgain} style={styles.banner} accessibilityRole="alert">
         <IconTile
           size={36}
           radius={9}
@@ -87,7 +88,7 @@ export function OutbidBanner() {
         <PressableScale onPress={bidAgain} style={styles.bidAgain}>
           <Text style={styles.bidAgainText}>Bid again</Text>
         </PressableScale>
-      </View>
+      </PressableScale>
     </Drop>
   );
 }

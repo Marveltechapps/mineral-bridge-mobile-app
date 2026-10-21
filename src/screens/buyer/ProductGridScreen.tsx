@@ -1,25 +1,40 @@
 import React from 'react';
-import { Image, Pressable, StyleSheet, View } from 'react-native';
+import { Image, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { GradientText } from '../../components/common/GradientText';
 import { Icon } from '../../components/common/Icon';
 import { PressableScale } from '../../components/common/PressableScale';
 import { Text } from '../../components/common/Text';
 import { Grid, Photo } from '../../components/common/ui';
 import { ScreenContainer } from '../../components/layout/ScreenContainer';
+import { matchesFilter, matchesQuery } from '../../catalog/gridFilter';
 import { useBuyerCatalog } from '../../catalog/useBuyerCatalog';
 import { go } from '../../navigation/flow';
-import { setAppState } from '../../context/appStore';
+import { setAppState, useApp } from '../../context/appStore';
 import { gradients, shadows } from '../../theme';
 
 /** B3 · Product forms for the mineral type chosen on the previous screen. */
 export function ProductGridScreen() {
   const catalog = useBuyerCatalog();
+  const { browseQuery, appliedFilter } = useApp(s => ({
+    browseQuery: s.browseQuery,
+    appliedFilter: s.appliedFilter,
+  }));
   const chips = [{ slug: '', name: 'All' }, ...catalog.forms];
+  const products = catalog.products.filter(
+    p => matchesQuery(p.name, browseQuery) && matchesFilter(p.name, appliedFilter),
+  );
   return (
     <ScreenContainer screen="bProducts" contentStyle={styles.content}>
       <View style={styles.search}>
         <Icon name="search" size={17} color="#8890ad" />
-        <Text style={styles.searchText}>Search minerals…</Text>
+        <TextInput
+          value={browseQuery}
+          onChangeText={text => setAppState({ browseQuery: text })}
+          placeholder="Search minerals…"
+          placeholderTextColor="#8890ad"
+          style={styles.searchText}
+          accessibilityLabel="Search minerals"
+        />
         <Pressable
           onPress={() => setAppState({ sheet: 'filter' })}
           accessibilityLabel="Filters"
@@ -62,7 +77,7 @@ export function ProductGridScreen() {
         })}
       </View>
       <Grid columns={2} gap={13}>
-        {catalog.products.map(p => (
+        {products.map(p => (
           <PressableScale
             key={p.slug}
             onPress={() => go('bDetail')}
@@ -96,8 +111,8 @@ export function ProductGridScreen() {
           </PressableScale>
         ))}
       </Grid>
-      {catalog.products.length === 0 ? (
-        <Text style={styles.empty}>No product forms for this mineral type.</Text>
+      {products.length === 0 ? (
+        <Text style={styles.empty}>No minerals match those filters.</Text>
       ) : null}
     </ScreenContainer>
   );
@@ -119,7 +134,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 13,
     boxShadow: shadows.hairline,
   },
-  searchText: { flex: 1, fontSize: 13, color: '#8890ad' },
+  searchText: { flex: 1, fontSize: 13, color: '#1a1f36', padding: 0 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
   chip: {
     paddingHorizontal: 12,

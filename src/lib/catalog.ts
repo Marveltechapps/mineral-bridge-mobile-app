@@ -665,6 +665,7 @@ export const GATED: Partial<Record<ScreenId, 1>> = {
   iStep1: 1,
   iStep2: 1,
   iReview: 1,
+  cart: 1,
 };
 
 export const INTRO_WHO: IntroAudience[] = [

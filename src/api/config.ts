@@ -8,7 +8,11 @@ export const ENDPOINTS = {
     requestOtp: '/auth/otp/request',
     verifyOtp: '/auth/otp/verify',
     resendOtp: '/auth/otp/resend',
+    devLoginStatus: '/auth/dev-login',
+    devLogin: '/auth/dev-login',
+    devLoginVerify: '/auth/dev-login/verify',
     signOut: '/auth/sign-out',
+    refresh: '/auth/token/refresh',
     deleteAccount: '/auth/account',
   },
   account: {

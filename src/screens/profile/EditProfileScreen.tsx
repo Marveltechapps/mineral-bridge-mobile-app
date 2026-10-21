@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { Icon } from '../../components/common/Icon';
 import { PressableScale } from '../../components/common/PressableScale';
 import { Text } from '../../components/common/Text';
@@ -7,13 +7,14 @@ import { SectionLabel } from '../../components/common/ui';
 import { ScreenContainer } from '../../components/layout/ScreenContainer';
 import { ACCOUNT_TIERS } from '../../lib/catalog';
 import { flash, go } from '../../navigation/flow';
-import { useApp } from '../../context/appStore';
+import { setAppState, useApp } from '../../context/appStore';
 import { gradients } from '../../theme';
 
 type Field = {
   label: string;
   value: string;
   locked?: boolean;
+  editable?: boolean;
   note?: string;
   chev?: boolean;
   onPress?: () => void;
@@ -21,14 +22,17 @@ type Field = {
 
 /** P1a · Edit profile — avatar, identity, business and address fields. */
 export function EditProfileScreen() {
-  const tierIdx = useApp(s => s.tierIdx);
+  const { tierIdx, profileDraft } = useApp(s => ({
+    tierIdx: s.tierIdx,
+    profileDraft: s.profileDraft,
+  }));
   const tier = ACCOUNT_TIERS[tierIdx];
   const changePhoto = () => flash('Choose a new profile photo');
   const sections: { label: string; fields: Field[] }[] = [
     {
       label: 'YOUR DETAILS',
       fields: [
-        { label: 'FULL NAME', value: 'Adaeze Chioma Okafor' },
+        { label: 'FULL NAME', value: profileDraft, editable: true },
         {
           label: 'MOBILE NUMBER',
           value: '+234 802 441 9087',
@@ -100,6 +104,16 @@ export function EditProfileScreen() {
             {sec.fields.map(f => (
               <View key={f.label}>
                 <Text style={styles.fieldLabel}>{f.label}</Text>
+                {f.editable ? (
+                  <View style={[styles.field, styles.open]}>
+                    <TextInput
+                      value={profileDraft}
+                      onChangeText={text => setAppState({ profileDraft: text })}
+                      style={[styles.value, styles.input]}
+                      accessibilityLabel="Full name"
+                    />
+                  </View>
+                ) : (
                 <PressableScale
                   activeScale={0.99}
                   onPress={
@@ -113,15 +127,15 @@ export function EditProfileScreen() {
                   }
                   style={[styles.field, f.locked ? styles.locked : styles.open]}
                 >
-                  <Text
-                    style={[
-                      styles.value,
-                      { color: f.locked ? '#606780' : '#1a1f36' },
-                    ]}
-                    leading={1.4}
-                  >
-                    {f.value}
-                  </Text>
+                    <Text
+                      style={[
+                        styles.value,
+                        { color: f.locked ? '#606780' : '#1a1f36' },
+                      ]}
+                      leading={1.4}
+                    >
+                      {f.value}
+                    </Text>
                   {f.locked ? (
                     <Icon name="lock" size={15} color="#a3abc4" />
                   ) : null}
@@ -129,6 +143,7 @@ export function EditProfileScreen() {
                     <Icon name="chevronRight" size={16} color="#b9c0d6" />
                   ) : null}
                 </PressableScale>
+                )}
                 {f.note ? (
                   <Text style={styles.note} leading={1.4}>
                     {f.note}
@@ -193,5 +208,6 @@ const styles = StyleSheet.create({
   open: { backgroundColor: '#fff', borderColor: '#e2e5ec' },
   locked: { backgroundColor: '#f4f5f7', borderColor: '#e5e7ec' },
   value: { flex: 1, fontSize: 14, fontWeight: '500' },
+  input: { color: '#1a1f36', padding: 0 },
   note: { fontSize: 11.5, color: '#606780', marginTop: 6 },
 });

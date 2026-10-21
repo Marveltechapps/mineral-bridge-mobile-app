@@ -24,7 +24,9 @@ export function currentScreen(): ScreenId | undefined {
 
 export function go(screen: ScreenId | undefined) {
   if (!screen || !navigationRef.isReady()) return;
-  appStore.setState({ sheet: null, banner: false, toast: null });
+  // Keep a toast that was just shown (add to cart, offer accepted) so it is
+  // still visible on the screen this navigation opens.
+  appStore.setState({ sheet: null, banner: false });
   navigationRef.dispatch(StackActions.push(screen));
 }
 

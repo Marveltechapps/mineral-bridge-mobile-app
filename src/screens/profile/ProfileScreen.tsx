@@ -7,6 +7,7 @@ import { Text } from '../../components/common/Text';
 import { IconTile, Photo, Pill, Scrim } from '../../components/common/ui';
 import { ScreenContainer } from '../../components/layout/ScreenContainer';
 import { ACCOUNT_TIERS, LEARN } from '../../lib/catalog';
+import { countLessonsDone } from '../../learn/progress';
 import { go } from '../../navigation/flow';
 import type { ScreenId } from '../../navigation/types';
 import { setAppState, useApp, type AppState } from '../../context/appStore';
@@ -20,10 +21,6 @@ const STATS = [
 ];
 
 const LEARN_TOTAL = LEARN.reduce((n, s) => n + s.lessons.length, 0);
-const LEARN_DONE = LEARN.reduce(
-  (n, s) => n + s.lessons.filter(l => l.done).length,
-  0,
-);
 
 type Row = {
   label: string;
@@ -45,6 +42,7 @@ const to = (s: ScreenId) => () => go(s);
 
 function groups(
   kyc: AppState['kyc'],
+  lessonsDone: number,
 ): { label: string; rule: string; delay: number; rows: Row[] }[] {
   const verified = kyc === 'verified';
   const pending = kyc === 'pending';
@@ -176,7 +174,7 @@ function groups(
         },
         {
           label: 'Learning Center',
-          sub: LEARN_DONE + ' of ' + LEARN_TOTAL + ' lessons complete',
+          sub: lessonsDone + ' of ' + LEARN_TOTAL + ' lessons complete',
           icon: 'M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5zM4 5.5V21h16',
           ...blue,
           onPress: to('lHome'),
@@ -195,7 +193,12 @@ function groups(
 
 /** Profile — identity hero, account tier and grouped account rows. */
 export function ProfileScreen() {
-  const { kyc, tierIdx } = useApp(s => ({ kyc: s.kyc, tierIdx: s.tierIdx }));
+  const { kyc, tierIdx, displayName, doneLessons } = useApp(s => ({
+    kyc: s.kyc,
+    tierIdx: s.tierIdx,
+    displayName: s.displayName,
+    doneLessons: s.doneLessons,
+  }));
   const tier = ACCOUNT_TIERS[tierIdx];
   const chip =
     kyc === 'verified'
@@ -233,7 +236,7 @@ export function ProfileScreen() {
                 <Text style={styles.avatarText}>AO</Text>
               </View>
               <View style={styles.flex}>
-                <Text style={styles.name}>Adaeze Okafor</Text>
+                <Text style={styles.name}>{displayName}</Text>
                 <Text style={styles.phone}>+234 802 441 9087</Text>
                 <Pill
                   label={chip.label}
@@ -311,7 +314,7 @@ export function ProfileScreen() {
         <Icon name="chevronRight" size={16} color="#b9c0d6" />
       </PressableScale>
 
-      {groups(kyc).map(g => (
+      {groups(kyc, countLessonsDone(doneLessons)).map(g => (
         <FadeUp
           key={g.label}
           duration={500}

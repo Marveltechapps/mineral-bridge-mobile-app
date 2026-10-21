@@ -1,4 +1,6 @@
 import { useRef, useSyncExternalStore } from 'react';
+import type { GridFilter } from '../catalog/gridFilter';
+import type { OnboardingStep } from '../api/auth';
 
 export type SheetId =
   | 'signin'
@@ -11,6 +13,59 @@ export type SheetId =
 export type KycStatus = 'none' | 'pending' | 'verified';
 export type Unit = 'g' | 'kg' | 't';
 export type PickerKind = 'language' | 'currency' | 'units';
+
+export type DeliveryDetails = {
+  facility: string;
+  street: string;
+  city: string;
+  region: string;
+  contact: string;
+  phone: string;
+  permit: string;
+};
+
+export type BulkDraft = {
+  qty: string;
+  mineral: string;
+  partner: string;
+  origin: string;
+  extracted: string;
+  description: string;
+  facility: string;
+  street: string;
+  city: string;
+  region: string;
+  contact: string;
+  phone: string;
+  permit: string;
+};
+
+export const initialDelivery: DeliveryDetails = {
+  facility: 'Aurora Refining Ltd.',
+  street: '14 Creek Road, Apapa',
+  city: 'Lagos',
+  region: 'Lagos State',
+  contact: 'Adaeze Okafor',
+  phone: '+234 802 441 9087',
+  permit: 'NG-IMP-2026-44817',
+};
+
+export const initialBulk: BulkDraft = {
+  qty: '12.5',
+  mineral: 'Gold Bullion Bar · 99.5%',
+  partner: 'Aurora Refining Ltd.',
+  origin: 'Ilesha Consolidated Lease, Osun',
+  extracted: '14 July 2026',
+  description:
+    'Refinery-grade bullion from consolidated cooperative intake, re-assayed at 99.5% and bar-stamped. Full chain-of-custody documents available on request.',
+  facility: 'Ilesha Consolidated Minerals Ltd.',
+  street: 'Plot 7, Ijebu-Jesa Industrial Way',
+  city: 'Ilesha',
+  region: 'Osun State',
+  contact: 'Tunde Balogun',
+  phone: '+234 703 118 2260',
+  permit: 'NG-EXP-2026-11204',
+};
 
 export type ChatMessage = {
   who: 'a' | 'u';
@@ -28,6 +83,8 @@ export interface AppState {
   authMode: 'signup' | 'login';
   phone: string;
   code: string;
+  /** In-memory development code. Never written to storage. */
+  developmentOtp: string;
   resend: number;
   otpExpires: number;
   tierIdx: number;
@@ -68,10 +125,30 @@ export interface AppState {
     biometric: boolean;
   };
   sheet: SheetId | null;
+  browseQuery: string;
+  appliedFilter: GridFilter | null;
+  docBack: boolean;
+  doneLessons: string[];
+  deliveredIds: string[];
+  displayName: string;
+  profileDraft: string;
+  ticketDraft: string;
+  otpBusy: boolean;
+  orderSubmitted: boolean;
+  offerAccepted: boolean;
+  bulkQuoted: boolean;
+  withdrawn: boolean;
+  onboardingNext: OnboardingStep | '';
+  signedIn: boolean;
+  /** Demo accounts keep the sample order book. A new sign-up does not. */
+  sampleOrders: boolean;
   toast: string | null;
   banner: boolean;
   qty: number;
+  qtyText: string;
   unit: Unit;
+  delivery: DeliveryDetails;
+  bulk: BulkDraft;
   bid: number;
   nudge: boolean;
   day: number;
@@ -85,6 +162,7 @@ export const initialState: AppState = {
   authMode: 'signup',
   phone: '8024419087',
   code: '',
+  developmentOtp: '',
   resend: 42,
   otpExpires: 60,
   tierIdx: 0,
@@ -125,10 +203,29 @@ export const initialState: AppState = {
     biometric: true,
   },
   sheet: null,
+  browseQuery: '',
+  appliedFilter: null,
+  docBack: false,
+  doneLessons: [],
+  deliveredIds: [],
+  displayName: 'Adaeze Okafor',
+  profileDraft: 'Adaeze Okafor',
+  ticketDraft: '',
+  otpBusy: false,
+  orderSubmitted: false,
+  offerAccepted: false,
+  bulkQuoted: false,
+  withdrawn: false,
+  onboardingNext: '',
+  signedIn: false,
+  sampleOrders: true,
   toast: null,
   banner: false,
   qty: 250,
+  qtyText: '250',
   unit: 'kg',
+  delivery: initialDelivery,
+  bulk: initialBulk,
   bid: 48400,
   nudge: true,
   day: 12,

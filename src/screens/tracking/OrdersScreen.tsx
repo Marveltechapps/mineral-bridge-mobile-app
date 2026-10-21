@@ -4,6 +4,7 @@ import { PressableScale } from '../../components/common/PressableScale';
 import { Text } from '../../components/common/Text';
 import { Photo, SegmentTabs } from '../../components/common/ui';
 import { ScreenContainer } from '../../components/layout/ScreenContainer';
+import { isDemoMode } from '../../api';
 import { ORDERS, SELL_REQUESTS, type Order } from '../../lib/catalog';
 import { go } from '../../navigation/flow';
 import { setAppState, useApp, type AppState } from '../../context/appStore';
@@ -33,24 +34,38 @@ type Tab = AppState['orderTab'];
 
 /** T1 · My orders — buying, selling and completed, each with stage progress. */
 export function OrdersScreen() {
-  const orderTab = useApp(s => s.orderTab);
+  const { orderTab, deliveredIds, sampleOrders } = useApp(s => ({
+    orderTab: s.orderTab,
+    deliveredIds: s.deliveredIds,
+    sampleOrders: s.sampleOrders,
+  }));
+  const catalogOrders = sampleOrders && isDemoMode() ? ORDERS : [];
+  const catalogSells = sampleOrders && isDemoMode() ? SELL_REQUESTS : [];
+  const toneOf = (order: Order) =>
+    deliveredIds.includes(order.id) ? 'done' : order.tone;
   const list: Order[] =
     orderTab === 'selling'
-      ? SELL_REQUESTS
-      : ORDERS.filter(o =>
-          orderTab === 'completed' ? o.tone === 'done' : o.tone !== 'done',
-        );
+      ? catalogSells
+      : catalogOrders
+          .filter(o =>
+            orderTab === 'completed' ? toneOf(o) === 'done' : toneOf(o) !== 'done',
+          )
+          .map(o =>
+            deliveredIds.includes(o.id)
+              ? { ...o, tone: 'done', status: 'DELIVERED', stage: 'Delivered', progress: '100%' }
+              : o,
+          );
   const tabs: { id: Tab; label: string; count: string }[] = [
     {
       id: 'active',
       label: 'Buying',
-      count: String(ORDERS.filter(o => o.tone !== 'done').length),
+      count: String(catalogOrders.filter(o => toneOf(o) !== 'done').length),
     },
-    { id: 'selling', label: 'Selling', count: String(SELL_REQUESTS.length) },
+    { id: 'selling', label: 'Selling', count: String(catalogSells.length) },
     {
       id: 'completed',
       label: 'Completed',
-      count: String(ORDERS.filter(o => o.tone === 'done').length),
+      count: String(catalogOrders.filter(o => toneOf(o) === 'done').length),
     },
   ];
   const open = (idx: number) => {
@@ -108,6 +123,15 @@ export function OrdersScreen() {
             </PressableScale>
           );
         })}
+        {list.length === 0 ? (
+          <Text style={styles.empty}>
+            {orderTab === 'selling'
+              ? 'No sell requests yet.'
+              : orderTab === 'completed'
+                ? 'No completed orders yet.'
+                : 'No active orders yet.'}
+          </Text>
+        ) : null}
       </View>
     </ScreenContainer>
   );
@@ -116,6 +140,12 @@ export function OrdersScreen() {
 const styles = StyleSheet.create({
   content: { paddingTop: 4, paddingBottom: 26 },
   list: { paddingTop: 16, paddingHorizontal: 20, gap: 12 },
+  empty: {
+    fontSize: 14,
+    color: '#6b7290',
+    textAlign: 'center',
+    marginTop: 28,
+  },
   card: {
     backgroundColor: '#fff',
     borderWidth: 1,

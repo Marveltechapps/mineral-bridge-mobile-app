@@ -101,7 +101,7 @@ export function PickupScreen() {
             <PressableScale
               key={s}
               disabled={booked}
-              onPress={() => setAppState({ slot: s })}
+              onPress={() => setAppState({ slot: a ? '' : s })}
               accessibilityState={{ selected: a, disabled: booked }}
               style={[
                 styles.slot,

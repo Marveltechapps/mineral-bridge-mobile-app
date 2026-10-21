@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, TextInput, View } from 'react-native';
 import { Icon } from '../../components/common/Icon';
 import { Text } from '../../components/common/Text';
 import {
@@ -10,25 +10,21 @@ import {
   SectionLabel,
 } from '../../components/common/ui';
 import { ScreenContainer } from '../../components/layout/ScreenContainer';
+import { setAppState, useApp, type BulkDraft } from '../../context/appStore';
 import { shadows } from '../../theme';
 
-const FIELDS = [
-  { label: 'MINERAL TYPE', value: 'Gold Bullion Bar · 99.5%', chevron: true },
-  {
-    label: 'INTENDED OFFTAKE PARTNER',
-    value: 'Aurora Refining Ltd.',
-    chevron: true,
-  },
-  {
-    label: 'ORIGIN / MINE SITE',
-    value: 'Ilesha Consolidated Lease, Osun',
-    chevron: false,
-  },
-  { label: 'EXTRACTION DATE', value: '14 July 2026', chevron: true },
+const FIELDS: { key: keyof BulkDraft; label: string; chevron: boolean }[] = [
+  { key: 'mineral', label: 'MINERAL TYPE', chevron: true },
+  { key: 'partner', label: 'INTENDED OFFTAKE PARTNER', chevron: true },
+  { key: 'origin', label: 'ORIGIN / MINE SITE', chevron: false },
+  { key: 'extracted', label: 'EXTRACTION DATE', chevron: true },
 ];
 
 /** C8 · Bulk intake 1 — consignment photos, volume, origin and extraction date. */
 export function BulkStep1Screen() {
+  const bulk = useApp(s => s.bulk);
+  const edit = (key: keyof BulkDraft) => (value: string) =>
+    setAppState(p => ({ bulk: { ...p.bulk, [key]: value } }));
   return (
     <ScreenContainer screen="iStep1" contentStyle={styles.content}>
       <Text style={styles.title}>Consignment details</Text>
@@ -49,7 +45,12 @@ export function BulkStep1Screen() {
       <View style={styles.fields}>
         <View style={styles.qtyRow}>
           <View style={styles.flex}>
-            <FieldBox label="QUANTITY" value="12.5" weight="700" />
+            <FieldBox
+              label="QUANTITY"
+              value={bulk.qty}
+              weight="700"
+              onChangeText={edit('qty')}
+            />
           </View>
           <View style={styles.unit}>
             <SectionLabel style={styles.unitLabel}>UNIT</SectionLabel>
@@ -61,9 +62,10 @@ export function BulkStep1Screen() {
         </View>
         {FIELDS.map(f => (
           <FieldBox
-            key={f.label}
+            key={f.key}
             label={f.label}
-            value={f.value}
+            value={bulk[f.key]}
+            onChangeText={edit(f.key)}
             right={
               f.chevron ? (
                 <Icon name="chevronDown" size={16} color="#8890ad" />
@@ -74,11 +76,13 @@ export function BulkStep1Screen() {
         <View>
           <SectionLabel style={styles.unitLabel}>DESCRIPTION</SectionLabel>
           <View style={styles.description}>
-            <Text style={styles.descriptionText} leading={1.55}>
-              Refinery-grade bullion from consolidated cooperative intake,
-              re-assayed at 99.5% and bar-stamped. Full chain-of-custody
-              documents available on request.
-            </Text>
+            <TextInput
+              value={bulk.description}
+              onChangeText={edit('description')}
+              accessibilityLabel="DESCRIPTION"
+              multiline
+              style={styles.descriptionText}
+            />
           </View>
         </View>
       </View>

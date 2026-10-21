@@ -10,7 +10,8 @@ import {
 import { PressableScale } from '../../components/common/PressableScale';
 import { Text } from '../../components/common/Text';
 import { ScreenContainer } from '../../components/layout/ScreenContainer';
-import { isDemoMode, resendMobileOtp, verifyMobileOtp } from '../../api/auth';
+import { isDemoMode, resendMobileOtp, visibleDevelopmentOtp } from '../../api/auth';
+import { submitOtpCode } from '../../navigation/ctaActions';
 import { flash, go } from '../../navigation/flow';
 import { appStore, setAppState, useApp } from '../../context/appStore';
 import { Keypad } from '../../components/auth/Keypad';
@@ -18,11 +19,12 @@ import { formatPhone, usePhone } from '../../lib/hooks/usePhone';
 
 /** 0.4 · Verify code — six boxes, keypad, and the resend countdown. */
 export function OtpScreen() {
-  const { code, resend, otpExpires, authMode } = useApp(s => ({
+  const { code, resend, otpExpires, authMode, developmentOtp } = useApp(s => ({
     code: s.code,
     resend: s.resend,
     otpExpires: s.otpExpires,
     authMode: s.authMode,
+    developmentOtp: s.developmentOtp,
   }));
   const expiryLeft = isDemoMode() ? resend : otpExpires;
   const { full } = usePhone();
@@ -49,18 +51,7 @@ export function OtpScreen() {
     const next = current + d;
     setAppState({ code: next });
     if (next.length === 6) {
-      advance.current = setTimeout(() => {
-        if (isDemoMode()) {
-          go('verifying');
-          return;
-        }
-        void verifyMobileOtp(appStore.getState().phone, next)
-          .then(() => go('verifying'))
-          .catch((error: unknown) => {
-            setAppState({ code: '' });
-            flash(error instanceof Error ? error.message : 'That code was not accepted');
-          });
-      }, 320);
+      advance.current = setTimeout(() => submitOtpCode(next), 320);
     }
   };
   const erase = () => setAppState(p => ({ code: p.code.slice(0, -1) }));
@@ -73,8 +64,14 @@ export function OtpScreen() {
     }
     void resendMobileOtp()
       .then(info => {
-        setAppState({ resend: info.resendAfter || 42, otpExpires: info.expiresIn || 60, code: '' });
-        flash('A new code was submitted to +234 ' + formatPhone(appStore.getState().phone));
+        const nextCode = visibleDevelopmentOtp(info.developmentOtp, typeof __DEV__ !== 'undefined' && __DEV__ === true);
+        setAppState({
+          resend: info.resendAfter || 42,
+          otpExpires: info.expiresIn || 60,
+          code: '',
+          developmentOtp: nextCode,
+        });
+        flash(nextCode ? 'A new development-only code is on this screen' : 'A new code was submitted to +234 ' + formatPhone(appStore.getState().phone));
       })
       .catch((error: unknown) => flash(error instanceof Error ? error.message : 'Could not resend the code'));
   };
@@ -85,16 +82,23 @@ export function OtpScreen() {
         <Text style={styles.heading} leading={1.2}>
           Enter the 6-digit code
         </Text>
-        <Text style={styles.sub} leading={1.5}>
-          Sent by SMS to <Text style={styles.bold}>{full}</Text> ·{' '}
-          <Text
-            style={styles.link}
-            onPress={() => go(authMode === 'login' ? 'login' : 'signupPhone')}
-            accessibilityRole="link"
-          >
-            change
+        {developmentOtp ? (
+          <Text style={styles.sub} leading={1.5}>
+            Development-only code. It was not sent by SMS. Type it below.
           </Text>
-        </Text>
+        ) : (
+          <Text style={styles.sub} leading={1.5}>
+            Sent by SMS to <Text style={styles.bold}>{full}</Text> ·{' '}
+            <Text
+              style={styles.link}
+              onPress={() => go(authMode === 'login' ? 'login' : 'signupPhone')}
+              accessibilityRole="link"
+            >
+              change
+            </Text>
+          </Text>
+        )}
+        {developmentOtp ? <Text style={styles.code}>{developmentOtp}</Text> : null}
       </FadeUp>
       <View
         style={styles.boxes}
@@ -162,6 +166,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.4,
   },
   sub: { fontSize: 13.5, color: '#c3cbe8', marginTop: 8 },
+  code: { marginTop: 14, fontSize: 28, fontWeight: '800', letterSpacing: 4, color: '#f3d27a' },
   bold: { color: '#fff', fontWeight: '700' },
   link: { color: '#2563eb', fontWeight: '700' },
   boxes: { flexDirection: 'row', gap: 9, marginTop: 26 },

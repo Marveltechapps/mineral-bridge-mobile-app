@@ -58,7 +58,13 @@ export function PayoutScreen() {
             $12,400 in escrow, releases on delivery
           </Text>
         </View>
-        <PressableScale onPress={() => go('withdraw')} style={styles.withdraw}>
+        <PressableScale
+          onPress={() => {
+            setAppState({ withdrawn: false });
+            go('withdraw');
+          }}
+          style={styles.withdraw}
+        >
           <Icon name="download" size={16} color="#2b1f04" strokeWidth={2.2} />
           <Text style={styles.withdrawText}>Withdraw funds</Text>
         </PressableScale>

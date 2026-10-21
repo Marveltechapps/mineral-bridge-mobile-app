@@ -715,6 +715,8 @@ Endpoint numbers match [API-ENDPOINTS.md](API-ENDPOINTS.md).
 | `intent` | `signup` \| `login` | ✔ | From `authMode`; drives the copy on `otp` |
 | `channel` | `sms` \| `voice` \| `whatsapp` | | Defaults to `sms` |
 
+When `NODE_ENV=development` and `DEV_OTP_ENABLED=true`, the 200 body also includes `developmentOtp`. The app shows it only in a debug build. Production omits the field and sends the SMS through the configured provider. `DEV_OTP_ENABLED` is separate from `DEV_LOGIN_ENABLED`.
+
 ```json
 200 OK
 {
@@ -733,6 +735,20 @@ a form that enables number enumeration: rate-limit per IP and per number, and re
 either way.
 
 Errors: `422 auth/invalid-phone`, `429 auth/otp-rate-limited`.
+
+#### Development login
+
+`GET /auth/dev-login`, `POST /auth/dev-login` and `POST /auth/dev-login/verify` are a separate local flow. The server answers them only when `NODE_ENV=development` and `DEV_LOGIN_ENABLED=true`. Otherwise `POST` returns `404 auth/dev-login-disabled`.
+
+```json
+{ "email": "dev.app@example.com", "password": "••••••••" }
+```
+
+```json
+{ "challengeId": "chl_…", "expiresIn": 120, "codeLength": 6, "developmentOtp": "••••••" }
+```
+
+The code is shown in the development UI and is not sent by SMS. `POST /auth/dev-login/verify` with `{ challengeId, code }` returns the same access and refresh token body as `POST /auth/otp/verify`. The normal OTP routes do not accept this challenge and never include `developmentOtp`.
 
 #### #2 `POST /auth/otp/verify`
 

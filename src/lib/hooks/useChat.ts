@@ -37,6 +37,15 @@ const REPLIES: Record<string, string> = {
 
 export const QUICK_REPLIES = Object.keys(REPLIES);
 
+const PAYOUT_REPLY = REPLIES['Change my payout account'];
+
+/** What the desk assistant says back. Payout questions point at Profile → Payouts. */
+export function assistantReply(text: string): string {
+  if (REPLIES[text]) return REPLIES[text];
+  if (/payout/i.test(text)) return PAYOUT_REPLY;
+  return 'Got it — let me check that against your account and come straight back to you.';
+}
+
 let replyTimer: ReturnType<typeof setTimeout> | undefined;
 
 /**
@@ -74,9 +83,7 @@ export function useChat() {
     }));
     clearTimeout(replyTimer);
     replyTimer = setTimeout(() => {
-      const reply =
-        REPLIES[text] ||
-        'Got it — let me check that against your account and come straight back to you.';
+      const reply = assistantReply(text);
       setAppState(p => ({
         chatTyping: false,
         chatOut: p.chatOut.concat([

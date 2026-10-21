@@ -30,6 +30,10 @@ export function CtaBar({
   ];
 
   if (m.dualCta) {
+    const gated =
+      m.cta === 'Sign in to continue' ||
+      m.cta === 'Verify identity to continue' ||
+      m.cta === 'Verification in review';
     return (
       <View style={[well, styles.dual]}>
         <PressableScale
@@ -43,7 +47,9 @@ export function CtaBar({
           onPress={onPrimary}
           style={[styles.dualButton, styles.buyButton]}
         >
-          <Text style={styles.buyLabel}>Buy Now</Text>
+          <Text style={styles.buyLabel} numberOfLines={2}>
+            {gated ? m.cta : 'Buy Now'}
+          </Text>
         </PressableScale>
       </View>
     );
@@ -110,7 +116,12 @@ const styles = StyleSheet.create({
     borderColor: '#16204a',
     boxShadow: shadows.navyButton,
   },
-  buyLabel: { color: '#fff', fontSize: 14.5, fontWeight: '600' },
+  buyLabel: {
+    color: '#fff',
+    fontSize: 14.5,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
   primary: {
     height: 58,
     borderWidth: 1,

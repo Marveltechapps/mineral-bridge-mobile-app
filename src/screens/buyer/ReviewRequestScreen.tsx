@@ -13,10 +13,14 @@ import { formatMoney } from '../../utils/format';
 export function ReviewRequestScreen() {
   const { qty, unitShort, grams } = useQuantity();
   const tierIdx = useApp(s => s.tierIdx);
+  const delivery = useApp(s => s.delivery);
   const rows = [
     { k: 'ACCOUNT TIER', v: ACCOUNT_TIERS[tierIdx].name },
-    { k: 'DELIVER TO', v: 'Aurora Refining Ltd.\n14 Creek Road, Apapa, Lagos' },
-    { k: 'CONTACT', v: 'Adaeze Okafor · +234 802 441 9087' },
+    {
+      k: 'DELIVER TO',
+      v: `${delivery.facility}\n${delivery.street}, ${delivery.city}`,
+    },
+    { k: 'CONTACT', v: `${delivery.contact} · ${delivery.phone}` },
     {
       k: 'PERMIT',
       v: tierIdx === 2 ? 'NG-IMP-2026-44817' : 'Not required for this tier',

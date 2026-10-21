@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import { Icon } from '../common/Icon';
 import { PressableScale } from '../common/PressableScale';
 import { Text } from '../common/Text';
+import { go } from '../../navigation/flow';
 import type { ResolvedMeta } from '../../navigation/screenMeta';
 
 type Props = { meta: ResolvedMeta; onBack: () => void };
@@ -24,15 +25,16 @@ export function Header({ meta: m, onBack }: Props) {
         {m.title}
       </Text>
       {m.bell ? (
-        <View
+        <PressableScale
+          onPress={() => go('notifs')}
           style={[styles.chrome, chrome]}
-          accessibilityLabel="3 unread notifications"
+          accessibilityLabel="Notifications"
         >
           <Icon name="bell" size={18} color={m.chromeFg} />
           <View style={[styles.badge, { borderColor: m.bg }]}>
             <Text style={styles.badgeText}>3</Text>
           </View>
-        </View>
+        </PressableScale>
       ) : null}
     </View>
   );
