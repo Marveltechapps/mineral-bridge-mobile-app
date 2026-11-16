@@ -22,3 +22,17 @@ Run `npm run typecheck` to check TypeScript. Dependencies must be installed in t
 ## Sample files
 
 The sample feature reads `GET /api/samples` from the service. Start the service before using the sample screens. Tap **View sample items**; API host settings are in `src/api/config.ts`. The route switch is a minimal example; add React Navigation for full app navigation.
+
+## Mineral Bridge customer app
+
+The app UI is a native React Native implementation of the "Mineral Bridge Mobile Prototype v4" design handoff (no WebView). `App.tsx` wraps `RootNavigator` in `SafeAreaProvider` and `AppStoreProvider`; `RootNavigator` renders `src/navigation/AppShell.tsx`.
+
+- `src/context/` — app store (`store.ts`, a port of the prototype's state machine: navigation stack, order stages, KYC, auctions, refunds, documents), initial/demo state (`state.ts`) and the React provider (`AppStore.tsx`).
+- `src/lib/mb4.ts` — demo catalog, order stages and the simulated counterparty updates. `src/lib/images.ts` — design images in `assets/images`.
+- `src/components/ui/` — design primitives (text, icons, gradients, motion, cards, fields). `src/components/AppChrome.tsx` — header, step bar, CTA bar, tab bar, toast and sheet.
+- `src/screens/<feature>/` — onboarding, dashboard, buy, orders, sell, auctions, account.
+- Fonts: Geist, Geist Mono and Instrument Serif in `assets/fonts`, copied to `android/app/src/main/assets/fonts` and listed in `ios/MineralBridge/Info.plist` (`UIAppFonts`) and the Xcode project resources.
+- Steps owned by Mineral Bridge, SGS or the logistics partner are simulated with the labelled demo buttons, exactly as in the design. App state is in memory (no persistence).
+- The original starter screens (`HomeScreen`, `SampleScreen`, `/api/samples`) are unchanged. In development builds, long-press the hero image on the welcome screen to open them.
+
+`npm test` runs the store regression tests in `__tests__/`.

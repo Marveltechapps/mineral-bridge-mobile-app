@@ -1,0 +1,83 @@
+// Values shared by the order screens (port of the prototype's orderVals / refundVals / cancelVals).
+import type { MBStore } from '../../context/store';
+import { RF_STEPS } from '../../context/store';
+import { DEMO_USER } from '../../context/state';
+import * as MB from '../../lib/mb4';
+import { imgFor } from '../../lib/images';
+import type { Auction, Order, Product } from '../../types/mineralBridge';
+
+const P = (id: string) => MB.product(id) || ({} as Product);
+
+export function contactItems(store: MBStore) {
+  return ([['Phone', 'Calling Mineral Bridge Operations'], ['SMS', 'Opening SMS'], ['Email', 'Opening email to ops@mineralbridge.com'], ['WhatsApp', 'Opening WhatsApp'], ['Chat', '']] as const)
+    .map(([l, t]) => ({ l, tap: () => (l === 'Chat' ? store.go('chat') : store.flash(t)) }));
+}
+
+export function orderDocs(store: MBStore, o: Order) {
+  const st = MB.stages(o.kind), di = (k: string) => st.findIndex(x => x.key === k), DK: [string, string, string, string?][] = [];
+  if (o.auction) DK.push(['auction', 'Auction result certificate', 'Auction ' + o.auction]);
+  if (o.quote && !o.auction) DK.push(['quote', 'Quotation ' + o.quote.no + (o.quote.rev ? ' · rev ' + o.quote.rev : ''), 'Issued ' + MB.fmt(o.quote.issued)]);
+  if (o.idx >= di('contractMb')) DK.push(['contract', 'E-contract (signed by both)', 'Signed ' + MB.fmt((o.log.find(l => /countersigned|accepted as the e-contract/.test(l.text)) || o.log[o.log.length - 1]).at)]);
+  if (o.kind === 'buy' && o.idx >= di('paid')) DK.push(['payment', 'Payment receipt' + (o.txn ? ' ' + o.txn : ''), o.idx >= di('payOk') ? 'Confirmed' : 'Awaiting confirmation']);
+  if (o.kind === 'buy' && o.idx >= di('payOk')) DK.push(['invoice', 'Tax invoice INV-' + o.id.slice(-5), 'Paid']);
+  if (o.company) DK.push(['inspection', 'Mineral Bridge inspection report', MB.fmt(o.company.at)]);
+  if (o.sgs) DK.push(['sgs', 'SGS test report ' + o.sgs.no, MB.fmt(o.sgs.at)]);
+  if (o.kind === 'sell' && o.idx >= di('payout')) DK.push(['payout', 'Payment advice', 'Released to you']);
+  if (o.ship) DK.push(['shipment', 'Consignment note ' + o.ship.id, o.ship.partner]);
+  if (o.ship && o.ship.pod) DK.push(['pod', 'Proof of delivery', o.ship.pod]);
+  if (!st[o.idx + 1]) DK.push(['completion', 'Completion certificate', 'Order closed']);
+  if (o.cancelled) DK.push(['cancel', 'Cancellation confirmation', 'Cancelled ' + MB.fmt(o.cancelled.at)]);
+  [...(o.history || []), ...(o.refund ? [o.refund] : [])].filter(r => r.status === 'refunded').forEach(r => DK.push(['refund', 'Refund receipt ' + r.ref, MB.money(r.amount), r.ref]));
+  return DK.map(([t, n, f, ref]) => ({ n, f, tap: () => store.openDoc({ t, oid: o.id, ref }), dl: () => store.downloadDoc({ t, oid: o.id, ref }) }));
+}
+
+export function phaseRows(o: Order) {
+  const st = MB.stages(o.kind), ph = MB.phases(o.kind), all = !st[o.idx + 1], cur = all ? st[o.idx].phase : st[o.idx + 1].phase;
+  return ph.map((l, i) => {
+    const d = all || i < cur, a = !all && i === cur;
+    return { l, n: String(i + 1), dot: d ? '#121214' : a ? '#D9B456' : '#fff', dotBorder: d ? '#121214' : a ? '#D9B456' : '#D5D3CC', fg: !d && !a ? '#8B8A90' : '#121214', line: i === ph.length - 1 ? 'transparent' : d ? '#121214' : '#E4E2DB', tag: d ? 'Done' : a ? 'Now' : '' };
+  });
+}
+
+export function auditRows(o: Order) {
+  return [...o.log].reverse().map((l, i, arr) => ({ who: l.who, text: l.text, note: l.note, at: MB.fmt(l.at), line: i === arr.length - 1 ? 'transparent' : '#EFEDE7', youBg: l.who === 'You' ? '#121214' : '#F1EFE9', youFg: l.who === 'You' ? '#D9B456' : '#3A3940', ini: l.who === 'You' ? 'YOU' : l.who.startsWith('SGS') ? 'SGS' : l.who.startsWith('Sahel') ? 'LP' : 'MB' }));
+}
+
+export function orderLines(o: Order) {
+  return o.kind === 'sell' && o.sell ? [{ n: o.sell.name, q: o.sell.qty + ' ' + o.sell.unit, g: o.sell.grade + ' · ' + o.sell.form }] : o.items.map(it => { const p = P(it.pid); return { n: p.name, q: it.qty + ' ' + p.unit, g: p.lab ? p.grade + ' · ' + p.lab : 'Test report on request' }; });
+}
+
+export const refundTone = (st: string): [string, string, string] => (({ requested: ['#FBF3E4', '#A1620B', 'Requested'], review: ['#FBF3E4', '#A1620B', 'Under review'], approved: ['#E8EEF9', '#2B4C8C', 'Approved'], processing: ['#E8EEF9', '#2B4C8C', 'Processing'], refunded: ['#E2F2E9', '#17704C', 'Refunded'], declined: ['#FDECEA', '#B42318', 'Declined'] } as Record<string, [string, string, string]>)[st] || ['#F1EFE9', '#3A3940', st]);
+
+export function refundView(o?: Order) {
+  const rfo = o && o.refund;
+  if (!rfo) return null;
+  const ti = RF_STEPS.findIndex(x => x[0] === rfo.status), t = refundTone(rfo.status);
+  return {
+    ref: rfo.ref, amount: MB.money(rfo.amount), typeLabel: rfo.type === 'full' ? 'Full refund' : 'Partial refund', reason: rfo.reason, to: rfo.to, statusLabel: t[2], pillBg: t[0], pillFg: t[1],
+    declined: rfo.status === 'declined', declineReason: rfo.reason2 || '', showSteps: rfo.status !== 'declined', bankRef: rfo.bankRef || '',
+    steps: RF_STEPS.map(([, l], i) => ({ l, bar: i <= ti ? (rfo.status === 'refunded' ? '#17704C' : '#121214') : '#E4E2DB', fg: i <= ti ? '#121214' : '#8B8A90', w: (i === ti ? 600 : 400) as 400 | 600 })),
+  };
+}
+
+export function shipSteps(o: Order) {
+  const ORDER = ['Pickup scheduled', 'Picked up', 'In transit', 'Delivered'];
+  const s0 = (o.ship || { status: '' }).status, st = s0 === 'Delivered to vault' ? 'Delivered' : s0, i = ORDER.indexOf(st);
+  return ['Booked', 'Collected', 'In transit', 'Delivered'].map((l, k) => ({ l, bar: k <= i ? '#D9B456' : 'rgba(255,255,255,.14)', fg: k <= i ? '#F4F2ED' : '#9C9AA0' }));
+}
+
+export function aucOrderCard(store: MBStore, a: Auction) {
+  const s = store.state, p = P(a.pid), o = a.orderId ? s.orders.find(x => x.id === a.orderId) : undefined, lead = a.bids.length && a.bids[a.bids.length - 1].who === 'You';
+  const base = { id: a.id, title: p.name, qtyLine: a.qty + ' ' + p.unit, img: imgFor(p.img), tap: () => store.openAuction(a.id) };
+  if (o) { const v = store.view(o); return { ...base, id: a.id + ' · ' + o.id, status: v.status, pillBg: v.pillBg, pillFg: v.pillFg, value: MB.money(store.aucCur(a)), pct: v.pct, next: v.next, tap: () => store.go('order', { oid: o.id }) }; }
+  if (a.result === 'won') return { ...base, status: 'Won · pay now', pillBg: '#E2F2E9', pillFg: '#17704C', value: 'Winning bid ' + MB.money(store.aucCur(a)), pct: '20%', next: 'Pay the winning bid to release the lot for dispatch.', tap: () => store.go('auctionWon', { aid: a.id }) };
+  if (a.status === 'live') return { ...base, status: lead ? 'Leading' : 'Outbid', pillBg: lead ? '#E2F2E9' : '#FDECEA', pillFg: lead ? '#17704C' : '#B42318', value: 'Current ' + MB.money(store.aucCur(a)), pct: '10%', next: (lead ? 'You are the highest bidder' : 'Another bidder is ahead. Bid again') + ' · ends in ' + store.left(a.endsAt - Date.now()) };
+  if (a.status === 'upcoming') return { ...base, status: 'Reminder on', pillBg: '#FBF3E4', pillFg: '#A1620B', value: 'Starts at ' + MB.money(a.start), pct: '0%', next: 'Bidding opens ' + MB.fmt(a.startsAt || 0) };
+  return { ...base, status: 'Not won', pillBg: '#F1EFE9', pillFg: '#3A3940', value: 'Sold for ' + MB.money(store.aucCur(a)), pct: '100%', next: 'Another bidder won this lot.' };
+}
+
+/** The order the order-step screens show (current oid, falling back to the first). */
+export function currentOrder(store: MBStore) {
+  return store.order() || store.state.orders[0];
+}
+export const userOrDemo = (store: MBStore) => store.state.user || DEMO_USER;
