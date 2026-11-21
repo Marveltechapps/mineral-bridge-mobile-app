@@ -8,6 +8,7 @@ import { Tap } from '../../components/ui/Tap';
 import { Label, Txt } from '../../components/ui/Txt';
 import { BUYER_TYPES, SELLER_TYPES } from '../../lib/mb4';
 import { colors as c } from '../../theme';
+import { mineOf } from '../auctions/auctionVals';
 
 export const kycWordOf = (k?: string) => (k ? ({ verified: 'KYC verified', pending: 'KYC under review', rejected: 'KYC needs action', none: 'KYC not started' } as Record<string, string>)[k] : '');
 
@@ -17,7 +18,9 @@ export function ProfileScreen() {
   const stp = u && u.sellerType ? (SELLER_TYPES.find(b => b[0] === u.sellerType) || [])[1] : '';
   const tone = !u ? ['', ''] : u.kyc === 'verified' ? [c.greenBg, c.green] : u.kyc === 'pending' ? [c.amberBg, c.amber] : [c.redBg, c.red];
   const kycWord = u ? kycWordOf(u.kyc) : '';
-  const ini = u ? (String(u.name || '').trim().split(/\s+/).filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase() || 'MB') : 'G';
+  const initials = String((u && u.name) || '').trim().split(/\s+/).filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase();
+  let ini = 'G';
+  if (u) ini = initials || 'MB';
   const tags = [bt ? 'Buyer · ' + bt : '', stp ? 'Seller · ' + stp : ''].filter(Boolean) as string[];
   const contact = u ? [u.phone, u.email].filter(Boolean).join(' · ') : '';
   const refundsN = s.orders.filter(x => x.refund && !['refunded', 'declined'].includes(x.refund.status)).length;
@@ -30,10 +33,10 @@ export function ProfileScreen() {
       ['KYC & documents', kycWord, 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z', () => store.go('kycStatus')],
     ]],
     ['ACTIVITY', [
-      ['Auctions', (s.auctions || []).filter(a => a.status === 'live').length + ' live · ' + (s.auctions || []).filter(a => a.bids.some(b => b.who === 'You') && a.status !== 'ended').length + ' with your bids', 'M14 3.5 20.5 10 17 13.5 10.5 7zM10.5 7 4 13.5 7.5 17 14 10.5M3 21h9', () => store.go('auctions', { atab: 'live' })],
+      ['Auctions', (s.auctions || []).filter(a => a.status === 'live').length + ' live · ' + (s.auctions || []).filter(a => mineOf(a) && a.status !== 'ended').length + ' with your bids', 'M14 3.5 20.5 10 17 13.5 10.5 7zM10.5 7 4 13.5 7.5 17 14 10.5M3 21h9', () => store.go('auctions', { atab: 'live' })],
       ['Refunds', refundsN ? refundsN + ' in progress' : 'Request and track refunds', 'M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5', () => store.go('refunds')],
       ['Orders & sell requests', s.orders.length + ' in your history', 'M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 12h6M9 16h4', () => store.jump('orders')],
-      ['Notifications', s.notifs.filter(n => !n.read).length + ' unread', 'M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0', () => store.go('notifs')],
+      ['Notifications', s.unread + ' unread', 'M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0', () => store.go('notifs')],
       ['Notification channels', (['email', 'sms', 'whatsapp', 'push'] as const).filter(k => s.prefs[k]).length + ' of 4 on', 'M4 4h16v12H5.2L4 17.2z', () => store.go('prefs')],
     ]],
     ['HELP', [['Help & support', 'Phone, SMS, email, WhatsApp, chat', 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01', () => store.go('help')]]],

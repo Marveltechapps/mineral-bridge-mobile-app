@@ -21,7 +21,7 @@ export function OrderTrackingScreen() {
   const canRefundBtn = store.refundable(o) && o.hold !== 'discrepancy';
   const hasDisc = o.hold === 'discrepancy' && !!o.disc;
   const goAction = () => { if (ov.actionScreen === 'quote' && !o.quote) return; store.prefillForms(o); store.go(ov.actionScreen as never); };
-  const rejAlt = () => { if (sell) return store.jump('sellCats'); const m = (MB.product(o.items[0].pid) || { mineral: 'gold' }).mineral; store.jump('lots', { mineral: m, fform: 'All', labOnly: false, search: '' }); };
+  const rejAlt = () => { if (sell) return store.jump('sellCats'); const m = (MB.product(o.items[0] && o.items[0].pid) || { mineral: 'gold' }).mineral; store.jump('lots', { mineral: m, fform: 'All', labOnly: false, search: '' }); };
 
   return (
     <FadeUp style={{ paddingHorizontal: 18, paddingBottom: 24 }}>
@@ -53,7 +53,7 @@ export function OrderTrackingScreen() {
             <Label c={c.red}>DELIVERY DISCREPANCY</Label>
             <Pill label="Under review" bg={c.redBg} fg={c.red} />
           </View>
-          <Txt s={14} w={600} style={{ marginTop: 8 }}>{o.disc.qty + ' received · condition ' + o.disc.cond.toLowerCase() + ' · ' + o.disc.photos + (o.disc.photos === 1 ? ' photo' : ' photos')}</Txt>
+          <Txt s={14} w={600} style={{ marginTop: 8 }}>{o.disc.qty ? o.disc.qty + ' received · condition ' + o.disc.cond.toLowerCase() + ' · ' + o.disc.photos + (o.disc.photos === 1 ? ' photo' : ' photos') : 'Discrepancy raised'}</Txt>
           <Txt s={12.5} c={c.ink2} lh={1.5} style={{ marginTop: 4 }}>“{o.disc.note}”</Txt>
           <Txt s={12} c={c.muted} lh={1.5} style={{ marginTop: 8 }}>Mineral Bridge reviews the delivery photos and carrier records, then either ships the missing quantity or you can ask for money back for the difference.</Txt>
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
@@ -106,7 +106,7 @@ export function OrderTrackingScreen() {
         </View>
       ) : null}
       {ov.canDemo ? (
-        <DemoBox title="DEMO · STEPS OWNED BY MINERAL BRIDGE, SGS OR LOGISTICS" style={{ marginTop: 10 }}>
+        <DemoBox title="DEV ONLY · LOCAL SIMULATION (NOT SENT TO THE SERVER)" style={{ marginTop: 10 }}>
           <SoftBtn label={ov.demoLabel} onPress={() => store.demo('')} style={{ marginTop: 8 }} />
           {ov.canDeclineRefund ? <SoftBtn label="Simulate: refund declined with reason" h={38} bg="transparent" fg={c.red} s={12.5} onPress={() => store.demo('refundDecline')} style={{ marginTop: 6 }} /> : null}
           {ov.canReject ? <SoftBtn label="Simulate: order rejected with reason" h={38} bg="transparent" fg={c.red} s={12.5} onPress={() => store.demo('reject')} style={{ marginTop: 6 }} /> : null}
@@ -127,7 +127,7 @@ export function OrderTrackingScreen() {
         ))}
         {amount ? (
           <View style={[st.rowKV, { borderBottomWidth: 1, borderBottomColor: c.hair }]}>
-            <Txt s={13.5} c={c.muted}>{sell ? 'AGREED PRICE' : 'QUOTED TOTAL'}</Txt>
+            <Txt s={13.5} c={c.muted}>{sell ? 'AGREED PRICE' : o.quote && o.quote.est ? 'ESTIMATED TOTAL' : 'QUOTED TOTAL'}</Txt>
             <Txt s={13.5} mono w={600}>{amount}</Txt>
           </View>
         ) : null}

@@ -23,7 +23,7 @@ export function KycStatusScreen() {
       <View style={{ padding: 18, borderRadius: 22, backgroundColor: c.ink }}>
         <Label c={c.faint}>{u ? u.kycRef || '—' : ''}</Label>
         <Txt serif s={28} c={c.paper} style={{ marginTop: 6 }}>{u ? kycWordOf(u.kyc) : ''}</Txt>
-        <Txt s={12.5} c={c.soft} style={{ marginTop: 4 }}>Submitted {u && u.kycAt ? MB.fmt(u.kycAt) : '14 Oct 2026'}</Txt>
+        <Txt s={12.5} c={c.soft} style={{ marginTop: 4 }}>Submitted {u && u.kycAt ? MB.fmt(u.kycAt) : '—'}</Txt>
       </View>
       {u && u.kyc === 'rejected' ? (
         <>
@@ -57,8 +57,8 @@ export function KycStatusScreen() {
           );
         })}
       </ListCard>
-      {u && u.kyc === 'pending' ? (
-        <DemoBox title="DEMO · SIMULATE COMPLIANCE DECISION" r={16} pad={14} style={{ marginTop: 14 }}>
+      {__DEV__ && u && u.kyc === 'pending' ? (
+        <DemoBox title="DEV ONLY · LOCAL KYC DECISION (NOT SENT TO THE SERVER)" r={16} pad={14} style={{ marginTop: 14 }}>
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
             <SoftBtn label="Approve" bg={c.greenBg} fg={c.green} onPress={demo.approve} style={{ flex: 1 }} />
             <SoftBtn label="Ask for document" bg={c.redBg} fg={c.red} onPress={demo.reject} style={{ flex: 1 }} />

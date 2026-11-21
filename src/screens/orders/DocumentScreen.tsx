@@ -10,6 +10,9 @@ const OK: Record<string, number> = { SIGNED: 1, PAID: 1, CONFIRMED: 1, COMPLETED
 /** In-app preview of an order or lot document. */
 export function DocumentScreen() {
   const store = useStore(), s = store.state;
+  if (s.doc && s.doc.num && !s.docs[s.doc.num]) {
+    return <FadeUp style={{ paddingHorizontal: 18, paddingTop: 40 }}><Txt s={14} c={c.muted} center>{s.docLoading ? 'Loading document…' : 'This document is not available right now. Go back and try again.'}</Txt></FadeUp>;
+  }
   const d = store.docData(s.doc), ok = !!OK[d.status];
   return (
     <FadeUp style={{ paddingHorizontal: 18, paddingBottom: 24 }}>

@@ -1,6 +1,7 @@
+import type { CancellationInfo, Contract, Faq, HomeSummary, KycDocKindWire, OtpChannel, SupportThreadSummary } from '../api/types';
 import type { Address, Auction, ChatMsg, DocSpec, KycDocId, KycFile, Notif, Order, OrderItem, Role, User } from '../types/mineralBridge';
 import type { AppScreen } from '../navigation/types';
-import * as MB from '../lib/mb4';
+import type { DocData } from './store';
 
 export type Errs = Record<string, string>;
 
@@ -37,8 +38,49 @@ export interface RefundForm {
 
 export type KycState = { idType: string; consent: boolean } & Record<KycDocId, KycFile | false>;
 
+/** Per-order data that is not part of the `Order` UI shape (fetched on demand). */
+export interface OrderMeta {
+  contract?: Contract | null;
+  btc?: { address: string; amountSats: number; rateMinorPerBtc: number; lockExpiresAt: number; amountUsd: number } | null;
+  cancelInfo?: CancellationInfo | null;
+  loadedAt?: number;
+  shipLoaded?: boolean;
+  /** Index into the quotation-number candidates already tried (Q-xxxxx, -R2, -R3 ...). */
+  qTry?: number;
+}
+
+/** A phone/email change in progress (`POST /me/contact-change`), waiting for its verification code. */
+export interface ContactChange {
+  field: 'phone' | 'email';
+  channel: OtpChannel;
+  /** The wire identifier (E.164 for phone channels, lower-case email). */
+  identifier: string;
+  challengeId: string;
+  masked: string;
+  resendAt: number;
+  /** Non-production backends return the code; only ever shown in __DEV__. */
+  devOtp: string;
+}
+
+/** One message in a support thread. */
+export interface SupportMsg { id: string; me: boolean; system: boolean; who: string; text: string; at: number }
+
+/** An opened support thread (`GET /support/threads/:ref`). */
+export interface SupportThreadView { ref: string; topic: string; subject: string; status: string; messages: SupportMsg[] }
+
+export interface PaymentInstructions { beneficiary: string; bank: string; account: string; swift: string; upiId: string | null }
+
+/** A file picked by the user and already uploaded (`POST /files`). */
+export interface UploadRef { fileId: string; name: string; uri: string; type: string; label?: string }
+
+export type UploadBucket = 'sellPhotos' | 'sellDocs' | 'receipt' | 'refund' | 'proof';
+
 export interface AppState {
   ready: boolean;
+  /** True while the stored session is being restored at cold start. */
+  booting: boolean;
+  /** True while the post-sign-in data sync is running. */
+  syncing: boolean;
   screen: AppScreen;
   stack: AppScreen[];
   toast: string;
@@ -46,6 +88,13 @@ export interface AppState {
   user: User | null;
   auth: { mode: 'signup' | 'signin'; method: 'whatsapp' | 'email'; cc: string; value: string; name: string; keep: boolean };
   authErr: string;
+  authBusy: boolean;
+  challengeId: string;
+  registrationToken: string;
+  maskedDest: string;
+  /** Non-production backends return the OTP; only ever shown in __DEV__. */
+  devOtp: string;
+  resendAt: number;
   otp: string;
   otpErr: string;
   reg: { role: Role; buyerType: string; sellerType: string; business: string; country: string; other: string; terms: boolean };
@@ -54,6 +103,9 @@ export interface AppState {
   kycErr: string;
   kycDocId: KycDocId;
   kycDocErr: string;
+  kycReq: KycDocKindWire[];
+  kycUploading: boolean;
+  kycBusy: boolean;
   returnTo: string;
   cat: string;
   mineral: string;
@@ -66,11 +118,22 @@ export interface AppState {
   cols?: number;
   fform: string;
   labOnly: boolean;
+  /** Catalogue cache bookkeeping (the products themselves live in the `mb4` registries). */
+  catalogueLoading: boolean;
+  catalogueLoaded: boolean;
+  catalogueErr: string;
+  catVersion: number;
+  productsByMineral: Record<string, string[]>;
   cart: OrderItem[];
+  cartVersion: number;
   orders: Order[];
+  ordersLoading: boolean;
   oid: string;
   otab: 'buy' | 'sell' | 'auction';
+  om: Record<string, OrderMeta>;
   notifs: Notif[];
+  unread: number;
+  summary: HomeSummary | null;
   placing: boolean;
   ship: Address;
   shipErr: Errs;
@@ -88,15 +151,24 @@ export interface AppState {
   paying?: boolean;
   btcTx?: string;
   btcLockAt?: number;
+  /** UPI / net-banking payment reference entered by the buyer. */
+  payRef?: string;
+  /** Order id whose cancellation continues into a refund request. */
+  cancelRefund?: string;
+  instr: PaymentInstructions | null;
   rc: { qty: string; cond: string; photos: number; note: string };
   rcErr: string;
   draft: Draft;
   draftErr: Errs;
   hasDraft: boolean;
+  uploads: Record<UploadBucket, UploadRef[]>;
+  uploading: boolean;
   chat: Record<string, ChatMsg[]>;
   msg: string;
   prefs: { email: boolean; sms: boolean; whatsapp: boolean; push: boolean };
   faq: number;
+  faqs: Faq[] | null;
+  contacts: { phone: string; whatsapp: string; email: string } | null;
   edit: { name: string; business: string; email: string; phone: string; country: string } | null;
   editErr: Errs;
   rf: RefundForm;
@@ -104,6 +176,7 @@ export interface AppState {
   rfErr: string;
   qu: { pid: string; u: string } | null;
   auctions: Auction[];
+  auctionsLoading: boolean;
   atab: string;
   aid: string;
   bidAmt: string;
@@ -113,76 +186,62 @@ export interface AppState {
   reminders: Record<string, boolean>;
   tick: number;
   doc?: DocSpec;
+  /** Rendered issued documents by number. */
+  docs: Record<string, DocData>;
+  docLoading: boolean;
   cx?: { reason: string; note: string; agree: boolean };
   cxErr?: string;
   /** Increments whenever a screen asks to scroll back to the top. */
   scrollSeq: number;
+  /** Contact (phone/email) change flow. */
+  contact: ContactChange | null;
+  contactCode: string;
+  contactErr: string;
+  contactBusy: boolean;
+  /** Price-variation decision (`priceVar` screen). */
+  varNote: string;
+  varErr: string;
+  varBusy: boolean;
+  /** Support inbox + thread. `supRef === ''` on the thread screen means "new conversation". */
+  supThreads: SupportThreadSummary[] | null;
+  supLoading: boolean;
+  supErr: string;
+  supRef: string;
+  supThread: SupportThreadView | null;
+  supThreadLoading: boolean;
+  supMsg: string;
+  supBusy: boolean;
 }
-
-export const DEMO_USER: User = { name: 'Adaeze Okafor', business: 'Kestrel Metals Ltd', country: 'Nigeria', phone: '+234 803 412 7790', email: 'adaeze@kestrelmetals.com', role: 'both', buyerType: 'refinery', sellerType: 'dealer', kyc: 'verified', kycRef: 'MB-KYC-26-55102' };
 
 export const emptyDraft = (): Draft => ({ mineral: '', photos: 0, qty: '', unit: 'kg', grade: '', form: 'Raw', details: '', docs: [] });
 export const emptyRefund = (): RefundForm => ({ reason: '', note: '', type: 'full', amount: '', dest: 'original', holder: '', bank: '', account: '', account2: '', code: '', country: '', upi: '', upiName: '', addr: '', addr2: '', files: 0, agree: false });
+export const emptyUploads = (): Record<UploadBucket, UploadRef[]> => ({ sellPhotos: [], sellDocs: [], receipt: [], refund: [], proof: [] });
+export const EMPTY_USER: User = { name: '', business: '', country: '', phone: '', email: '', role: '', buyerType: '', sellerType: '', kyc: 'none', kycRef: '' };
 
-export function seedAuctions(): Auction[] {
-  const now = Date.now(), m = 6e4, H = 36e5;
-  const B = (who: string, amt: number, ago: number) => ({ who, amt, at: now - ago });
-  return [
-    { id: 'A-301', pid: 'G-1042', qty: 5, status: 'live', start: 300000, endsAt: now + 2 * H + 14 * m, bids: [B('Bidder 4821', 300000, 5 * H), B('Bidder 1307', 308500, 3 * H), B('Bidder 4821', 315000, 80 * m), B('Bidder 9052', 318500, 22 * m)] },
-    { id: 'A-302', pid: 'CO-5021', qty: 20, status: 'live', start: 170000, endsAt: now + 38 * m, bids: [B('Bidder 2210', 170000, 4 * H), B('Bidder 6644', 176500, 2 * H), B('Bidder 2210', 182000, 40 * m)] },
-    { id: 'A-303', pid: 'LI-5011', qty: 100, status: 'upcoming', start: 96000, startsAt: now + 26 * H, endsAt: now + 50 * H, bids: [] },
-    { id: 'A-304', pid: 'G-1044', qty: 50, status: 'upcoming', start: 296000, startsAt: now + 3 * 24 * H, endsAt: now + 4 * 24 * H, bids: [] },
-    { id: 'A-298', pid: 'S-2011', qty: 20, status: 'ended', start: 36000, endsAt: now - 2 * 24 * H, bids: [B('Bidder 3318', 36000, 3 * 24 * H), B('You', 40500, 2.2 * 24 * H), B('Bidder 3318', 41200, 2.1 * 24 * H)] },
-  ];
-}
-
-export function seed(): Order[] {
-  const now = Date.now(), H = 36e5;
-  const mk = (o: Partial<Order> & Pick<Order, 'id' | 'kind'>, upto: number, t0: number): Order => {
-    const ord = Object.assign({ items: [], idx: 0, created: t0, log: [] }, o) as Order;
-    const st = MB.stages(ord.kind);
-    let t = t0;
-    ord.log = [{ who: 'You', text: st[0].label, note: ord.kind === 'sell' ? 'Photos, quantity and documents submitted.' : 'Order submitted for review.', at: t }];
-    for (let i = 1; i <= upto; i++) {
-      t += 5 * H;
-      const s = st[i];
-      if (s.actor === 'you') ord.log.push({ who: 'You', text: s.label, note: 'Accepted by ' + DEMO_USER.name, at: t });
-      else {
-        const u = MB.demoUpdate(ord, s.key, t);
-        Object.assign(ord, u[2] || {});
-        ord.log.push({ who: MB.WHO[s.actor], text: u[0], note: u[1], at: t });
-      }
-    }
-    ord.idx = upto;
-    ord.created = t0;
-    return ord;
-  };
-  const addr: Address = { org: 'Kestrel Metals Ltd', street: '14 Kofo Abayomi Street', city: 'Victoria Island, Lagos', country: 'Nigeria', contact: 'Adaeze Okafor', mobile: '+234 803 412 7790' };
-  return [
-    mk({ id: 'MB-ORD-26-10418', kind: 'buy', items: [{ pid: 'G-1041', qty: 2 }], addr }, 2, now - 26 * H),
-    mk({ id: 'MB-SELL-26-90413', kind: 'sell', sell: { mineral: 'gold', name: 'Gold Dust', qty: 3.5, unit: 'kg', grade: 'Au 88%', form: 'Raw', details: 'Alluvial dust, dried and bagged.', photos: 4, docs: ['Assay report.pdf'], ref: 57000 } }, 6, now - 70 * H),
-    mk({ id: 'MB-ORD-26-10377', kind: 'buy', items: [{ pid: 'S-2011', qty: 20 }], addr, form: { method: 'Bank transfer', terms: '100% advance before dispatch' } }, MB.stages('buy').length - 1, now - 30 * 24 * H),
-  ];
-}
-
+/** A brand-new app state: signed out, with NO orders, auctions, cart, notifications or catalogue (all come from the API). */
 export function fresh(): AppState {
   return {
-    ready: true, screen: 'welcome', stack: [], toast: '', sheet: '',
-    user: null, auth: { mode: 'signup', method: 'whatsapp', cc: '+234', value: '', name: '', keep: true }, authErr: '',
+    ready: true, booting: false, syncing: false, screen: 'welcome', stack: [], toast: '', sheet: '',
+    user: null, auth: { mode: 'signup', method: 'whatsapp', cc: '+234', value: '', name: '', keep: true }, authErr: '', authBusy: false,
+    challengeId: '', registrationToken: '', maskedDest: '', devOtp: '', resendAt: 0,
     otp: '', otpErr: '', reg: { role: '', buyerType: '', sellerType: '', business: '', country: 'Nigeria', other: '', terms: false }, regErr: '',
-    kyc: { idType: 'National ID', front: false, back: false, selfie: false, address: false, biz: false, consent: false }, kycErr: '', kycDocId: 'front', kycDocErr: '', returnTo: '',
-    cat: 'precious', mineral: 'gold', pid: 'G-1041', qty: '1', qtyErr: '', search: '', sort: 'featured', fform: 'All', labOnly: false,
-    cart: [], orders: seed(), oid: 'MB-ORD-26-10418', otab: 'buy', notifs: [], placing: false,
+    kyc: { idType: 'National ID', front: false, back: false, selfie: false, address: false, biz: false, consent: false }, kycErr: '', kycDocId: 'front', kycDocErr: '', kycReq: [], kycUploading: false, kycBusy: false, returnTo: '',
+    cat: '', mineral: '', pid: '', qty: '1', qtyErr: '', search: '', sort: 'featured', fform: 'All', labOnly: false,
+    catalogueLoading: false, catalogueLoaded: false, catalogueErr: '', catVersion: 0, productsByMineral: {},
+    cart: [], cartVersion: 0, orders: [], ordersLoading: false, oid: '', otab: 'buy', om: {}, notifs: [], unread: 0, summary: null, placing: false,
     ship: { org: '', street: '', city: '', country: '', contact: '', mobile: '' }, shipErr: {},
     pf: { method: '', terms: '', billName: '', billAddr: '', instr: '', date: '', time: '', address: '', contact: '', mobile: '', avail: true, inspInstr: '', c1: false, c2: false }, pfErr: {},
     sc: { method: '', bank: '', account: '', date: '', time: '', address: '', pickup: '', logistics: '', other: '', c1: false }, scErr: {},
-    sign: { read: false, name: '' }, signErr: '', repNote: '', repErr: '', proof: false, payErr: '',
+    sign: { read: false, name: '' }, signErr: '', repNote: '', repErr: '', proof: false, payErr: '', instr: null,
     rc: { qty: '', cond: 'Good', photos: 0, note: '' }, rcErr: '',
-    draft: emptyDraft(), draftErr: {}, hasDraft: false,
-    chat: { 'MB-ORD-26-10418': [{ me: false, text: 'Hello Adaeze, we have sent quotation Q-10418 for 2 kg of Gold Doré. Happy to discuss on a call.', at: Date.now() - 2 * 36e5 }] }, msg: '',
-    prefs: { email: true, sms: true, whatsapp: true, push: true }, faq: -1,
+    draft: emptyDraft(), draftErr: {}, hasDraft: false, uploads: emptyUploads(), uploading: false,
+    chat: {}, msg: '',
+    prefs: { email: true, sms: true, whatsapp: true, push: true }, faq: -1, faqs: null, contacts: null,
     edit: null, editErr: {},
-    rf: emptyRefund(), rfFieldErr: {}, rfErr: '', qu: null, auctions: seedAuctions(), atab: 'live', aid: 'A-301', bidAmt: '', bidErr: '', autoOn: false, autoMax: '', reminders: {}, tick: 0,
+    rf: emptyRefund(), rfFieldErr: {}, rfErr: '', qu: null, auctions: [], auctionsLoading: false, atab: 'live', aid: '', bidAmt: '', bidErr: '', autoOn: false, autoMax: '', reminders: {}, tick: 0,
+    docs: {}, docLoading: false,
     scrollSeq: 0,
+    contact: null, contactCode: '', contactErr: '', contactBusy: false, varNote: '', varErr: '', varBusy: false,
+    supThreads: null, supLoading: false, supErr: '', supRef: '', supThread: null, supThreadLoading: false, supMsg: '', supBusy: false,
   };
 }

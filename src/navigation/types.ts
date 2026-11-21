@@ -11,4 +11,5 @@ export type AppScreen =
   | 'refund' | 'cancel' | 'refunds' | 'receipt' | 'chat' | 'shipment'
   | 'sellCats' | 'sellForm' | 'sellDone'
   | 'profile' | 'editProfile' | 'bizType' | 'kycStatus' | 'notifs' | 'prefs' | 'help'
-  | 'auctions' | 'auction' | 'auctionWon' | 'doc';
+  | 'auctions' | 'auction' | 'auctionWon' | 'doc'
+  | 'contactOtp' | 'priceVar' | 'support' | 'supportThread';

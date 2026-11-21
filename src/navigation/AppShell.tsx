@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { BackHandler, KeyboardAvoidingView, Platform, ScrollView, StatusBar, View } from 'react-native';
+import { ActivityIndicator, BackHandler, KeyboardAvoidingView, Platform, ScrollView, StatusBar, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from '../context/AppStore';
 import { CtaBar, Header, Sheet, StepBar, TabBar, Toast } from '../components/AppChrome';
@@ -25,6 +25,7 @@ export function AppShell({ onOpenStarter }: { onOpenStarter?: () => void }) {
   }, [store]);
 
   const Screen = SCREENS[s.screen];
+  if (s.booting) return <View style={{ flex: 1, backgroundColor: c.paper, alignItems: 'center', justifyContent: 'center' }} accessibilityLabel="Loading"><ActivityIndicator color={c.gold} size="large" /></View>;
   const bottomPad = m.cta || m.tabs ? 0 : insets.bottom;
   return (
     <View style={{ flex: 1, backgroundColor: c.paper, paddingTop: insets.top }}>
@@ -32,10 +33,11 @@ export function AppShell({ onOpenStarter }: { onOpenStarter?: () => void }) {
       {/* 'padding' on both platforms: it only pads by the real keyboard overlap, so it also works on
           Android 15+ where edge-to-edge enforcement stops adjustResize from resizing the window. */}
       <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}>
+        {s.syncing ? <View pointerEvents="none" accessibilityLabel="Syncing" style={{ height: 2, backgroundColor: c.gold, opacity: 0.7 }} /> : null}
         {m.header ? <Header store={store} m={m} /> : null}
         {m.step ? <StepBar m={m} /> : null}
-        {s.screen === 'chat' ? (
-          <Screen key="chat" />
+        {s.screen === 'chat' || s.screen === 'supportThread' ? (
+          <Screen key={s.screen} />
         ) : (
           <ScrollView ref={scroll} style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1, paddingBottom: bottomPad }}
             keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" showsVerticalScrollIndicator={false}>

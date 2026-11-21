@@ -6,7 +6,7 @@ import type { RefundForm } from '../../context/state';
 import { Card, CheckRow, Chips, ErrBox, Field, LabeledField, OptionCard, Segmented } from '../../components/ui/Blocks';
 import { Icon } from '../../components/ui/Icon';
 import { FadeUp } from '../../components/ui/Motion';
-import { Tap } from '../../components/ui/Tap';
+import { UploadPicker } from '../../components/UploadPicker';
 import { Label, Txt } from '../../components/ui/Txt';
 import * as MB from '../../lib/mb4';
 import { colors as c } from '../../theme';
@@ -77,10 +77,7 @@ export function RefundScreen() {
         </Card>
       ) : null}
       <Label style={{ marginTop: 20, marginHorizontal: 4, marginBottom: 8 }}>EVIDENCE (OPTIONAL)</Label>
-      <Tap onPress={() => setR({ files: r.files + 1 })} style={{ padding: 15, borderRadius: 16, borderWidth: 1.5, borderStyle: 'dashed', borderColor: c.dash, backgroundColor: c.white, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Txt s={13.5} w={600}>Add photo or document</Txt>
-        <Txt s={13.5} w={600} mono c={c.goldInk}>{r.files} added</Txt>
-      </Tap>
+      <UploadPicker bucket="refund" purpose="refund_evidence" title="Add photo or document" max={5} />
       <CheckRow r={16} pv={13} s={13} on={r.agree} onPress={() => setR({ agree: !r.agree })} style={{ marginTop: 14 }}>I understand the order is paused while Mineral Bridge reviews this request, and refunds take 3–7 working days after approval.</CheckRow>
       {s.rfErr ? <ErrBox>{s.rfErr}</ErrBox> : null}
     </FadeUp>

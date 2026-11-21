@@ -17,6 +17,9 @@ class MainApplication : Application(), ReactApplication {
           // Packages that cannot be autolinked yet can be added manually here, for example:
           // add(MyReactNativePackage())
         },
+      // Debug builds load JavaScript from Metro (__DEV__ === true) and use the
+      // isolated development API. Release builds package the bundle.
+      useDevSupport = BuildConfig.DEBUG,
     )
   }
 

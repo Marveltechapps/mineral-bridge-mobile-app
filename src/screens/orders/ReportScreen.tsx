@@ -2,6 +2,7 @@ import React from 'react';
 import { useStore } from '../../context/AppStore';
 import { Card, ErrBox, Field, KV, ListCard, SummaryCard } from '../../components/ui/Blocks';
 import { FadeUp } from '../../components/ui/Motion';
+import { Tap } from '../../components/ui/Tap';
 import { Label, Txt } from '../../components/ui/Txt';
 import * as MB from '../../lib/mb4';
 import { colors as c } from '../../theme';
@@ -13,9 +14,8 @@ export function ReportScreen() {
   const o = currentOrder(store);
   if (!o) return null;
   const ov = store.view(o);
-  const rows: [string, string][] = o.kind === 'sell' && o.sell
-    ? [['Net weight', o.sell.qty + ' ' + o.sell.unit], ['Grade', o.sell.grade], ['Sampling', 'ISO 3082 composite'], ['Result', 'Compliant']]
-    : (o.items.map(it => { const p = MB.product(it.pid); return [p ? p.name : '', it.qty + ' ' + (p ? p.unit + ' · ' + p.grade : '')] as [string, string]; }) as [string, string][]).concat([['Sampling', 'ISO 3082 composite'], ['Result', 'Compliant']]);
+  const docOf = (type: string) => (o.docs || []).find(d => d.type === type);
+  const open = (type: string) => { const d = docOf(type); if (d) store.openDoc({ t: type, num: d.number, oid: o.id }); };
   const has = !!(o.company || o.sgs);
   return (
     <FadeUp style={{ paddingHorizontal: 18, paddingBottom: 24 }}>
@@ -34,6 +34,7 @@ export function ReportScreen() {
             <KV k="Date" v={MB.fmt(o.company.at)} />
             <KV k="Result" v={o.company.result} vColor={c.green} line={false} />
           </ListCard>
+          {docOf('inspection_report') ? <Tap onPress={() => open('inspection_report')} style={{ marginTop: 8, marginHorizontal: 4 }}><Txt s={13} w={600} c={c.goldInk}>Open inspection report</Txt></Tap> : null}
         </>
       ) : null}
       {o.sgs ? (
@@ -41,9 +42,9 @@ export function ReportScreen() {
           <Label style={{ marginTop: 20, marginHorizontal: 4, marginBottom: 8 }}>2 · THIRD-PARTY TEST (SGS)</Label>
           <ListCard>
             <KV k="Report no." v={o.sgs.no} mono />
-            {rows.map(([k, v]) => <KV key={k} k={k} v={v} />)}
             <KV k="Issued" v={MB.fmt(o.sgs.at)} line={false} />
           </ListCard>
+          {docOf('test_certificate') ? <Tap onPress={() => open('test_certificate')} style={{ marginTop: 8, marginHorizontal: 4 }}><Txt s={13} w={600} c={c.goldInk}>Open test report</Txt></Tap> : null}
         </>
       ) : null}
       {has ? (

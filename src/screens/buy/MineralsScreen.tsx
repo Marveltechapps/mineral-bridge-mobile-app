@@ -9,11 +9,13 @@ import { Label, Txt } from '../../components/ui/Txt';
 import { imgFor } from '../../lib/images';
 import { CATS, PRODUCTS } from '../../lib/mb4';
 import { colors as c } from '../../theme';
+import { CatalogueState } from './CatalogueState';
 
 /** Subcategories of a mineral category. */
 export function MineralsScreen() {
   const store = useStore(), s = store.state;
   const cat = CATS.find(x => x.id === s.cat) || CATS[0];
+  if (!cat) return <FadeUp style={{ paddingHorizontal: 18, paddingBottom: 24 }}><CatalogueState what="minerals" /></FadeUp>;
   return (
     <FadeUp style={{ paddingHorizontal: 18, paddingBottom: 24 }}>
       <BgImage source={imgFor(cat.img)} style={{ height: 130, borderRadius: 22 }}>

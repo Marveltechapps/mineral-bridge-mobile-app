@@ -8,6 +8,7 @@ import { Label, Txt } from '../../components/ui/Txt';
 import { imgFor } from '../../lib/images';
 import { CATS, mineralName, PRODUCTS } from '../../lib/mb4';
 import { colors as c } from '../../theme';
+import { CatalogueState } from './CatalogueState';
 import { lotCard } from './lotCard';
 
 export function CategoriesScreen() {
@@ -45,7 +46,8 @@ export function CategoriesScreen() {
           <Tap onPress={() => store.setState({ search: '' })} style={{ marginTop: 14 }}><Txt s={13.5} w={600} c={c.goldInk}>Clear search</Txt></Tap>
         </Card>
       ) : null}
-      {!q ? (
+      {!q && !CATS.length ? <CatalogueState what="minerals" /> : null}
+      {!q && CATS.length ? (
         <View style={{ gap: 10, marginTop: 14 }}>
           {CATS.map(cat => (
             <Tap key={cat.id} scale={0.985} onPress={() => store.go('minerals', { cat: cat.id, search: '' })}>

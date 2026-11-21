@@ -8,42 +8,38 @@ import { Tap } from '../../components/ui/Tap';
 import { Label, Txt } from '../../components/ui/Txt';
 import { colors as c } from '../../theme';
 
-const CHANNELS: [string, string, string, string][] = [
-  ['Phone', '+234 1 700 6400', 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z', 'tel:+23417006400'],
-  ['SMS', '+234 803 700 6400', 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z', 'sms:+2348037006400'],
-  ['Email', 'support@mineralbridge.com', 'M4 4h16v16H4zM22 6l-10 7L2 6', 'mailto:support@mineralbridge.com'],
-  ['WhatsApp', '+234 803 700 6400', 'M3 21l1.6-5A9 9 0 1 1 8 19.4z', 'https://wa.me/2348037006400'],
-];
-const FAQ: [string, string][] = [
-  ['Why is there no price on lots?', 'Prices depend on quantity and grade. After you place an order, Mineral Bridge sends a quotation for you to accept or decline.'],
-  ['When do I pay?', 'After you accept the quotation and both sides sign the e-contract. Payment is confirmed by Mineral Bridge before dispatch.'],
-  ['Who inspects the minerals?', 'Only minerals you sell to us are inspected. Our team checks quantity and condition at your site, then an independent third party such as SGS tests quality. Lots you buy come with their existing test report.'],
-  ['How do I sell to Mineral Bridge?', 'Choose Sell, pick the mineral, add at least 3 photos, quantity, quality and any certificates, then submit. Our team will contact you to agree a price.'],
-];
-
+const ICONS: Record<string, string> = {
+  Phone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z',
+  SMS: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z',
+  Email: 'M4 4h16v16H4zM22 6l-10 7L2 6',
+  WhatsApp: 'M3 21l1.6-5A9 9 0 1 1 8 19.4z',
+};
 export function HelpScreen() {
   const store = useStore(), s = store.state;
   const { width } = useWindowDimensions();
   const w = Math.floor((width - 36 - 8) / 2);
-  const open = (l: string, url: string) => { store.flash('Opening ' + l); Linking.openURL(url).catch(() => {}); };
-  const supportChat = () => { const o = s.orders.find(x => !store.view(x).done) || s.orders[0]; if (o) store.go('chat', { oid: o.id }); };
+  const ct = s.contacts, faqs = s.faqs || [];
+  const channels: [string, string, string][] = ct ? [['Phone', ct.phone, 'tel:' + ct.phone.replace(/\s/g, '')], ['SMS', ct.phone, 'sms:' + ct.phone.replace(/\s/g, '')], ['Email', ct.email, 'mailto:' + ct.email], ['WhatsApp', ct.whatsapp, 'https://wa.me/' + ct.whatsapp.replace(/\D/g, '')]] : [];
+  const open = (l: string, url: string) => { Linking.openURL(url).catch(() => store.flash('Could not open ' + l.toLowerCase() + ' on this device')); };
+  const supportChat = () => { if (!s.user) return store.flash('Sign in to message support. You can still call, email or WhatsApp us.'); store.go('support'); };
   return (
     <FadeUp style={{ paddingHorizontal: 18, paddingBottom: 24 }}>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        {CHANNELS.map(([l, v, icon, url]) => (
+        {channels.map(([l, v, url]) => (
           <Tap key={l} onPress={() => open(l, url)} style={{ width: w }}>
             <Card r={18} style={{ padding: 14 }}>
-              <Icon d={icon} size={18} />
+              <Icon d={ICONS[l]} size={18} />
               <Txt s={14} w={600} style={{ marginTop: 10 }}>{l}</Txt>
               <Txt s={11.5} c={c.muted} style={{ marginTop: 2 }}>{v}</Txt>
             </Card>
           </Tap>
         ))}
       </View>
+      {!ct ? <Card style={{ paddingVertical: 18, paddingHorizontal: 16 }}><Txt s={13} c={c.muted} center>{s.faqs === null ? 'Loading contact details…' : 'Contact details are unavailable right now.'}</Txt><Tap onPress={() => void store.task(store.remote.loadFaqs())} style={{ marginTop: 8, alignSelf: 'center' }}><Txt s={13} w={600} c={c.goldInk}>Retry</Txt></Tap></Card> : null}
       <Tap onPress={supportChat} style={{ marginTop: 8, height: 52, borderRadius: 16, backgroundColor: c.ink, alignItems: 'center', justifyContent: 'center' }}><Txt s={14.5} w={600} c={c.paper}>Chat with support</Txt></Tap>
       <Label style={{ marginTop: 20, marginHorizontal: 4, marginBottom: 8 }}>FREQUENT QUESTIONS</Label>
       <ListCard>
-        {FAQ.map(([q, a], i) => (
+        {faqs.map(({ q, a }, i) => (
           <Tap key={q} accessibilityState={{ expanded: s.faq === i }} onPress={() => store.setState({ faq: s.faq === i ? -1 : i })} style={{ paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: c.hair }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
               <Txt s={14} w={600} style={{ flex: 1 }}>{q}</Txt>

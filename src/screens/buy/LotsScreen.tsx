@@ -9,6 +9,7 @@ import { Txt } from '../../components/ui/Txt';
 import { mineralName, PRODUCTS } from '../../lib/mb4';
 import { colors as c } from '../../theme';
 import type { Product } from '../../types/mineralBridge';
+import { CatalogueState } from './CatalogueState';
 import { lotCard } from './lotCard';
 
 const SORTS: [string, string][] = [['featured', 'Available first'], ['high', 'Most quantity'], ['low', 'Least quantity'], ['name', 'Name A–Z']];
@@ -97,7 +98,8 @@ export function LotsScreen() {
           );
         })}
       </View>
-      {!lots.length ? (
+      {!lots.length && !PRODUCTS.length ? <CatalogueState what="lots" /> : null}
+      {!lots.length && PRODUCTS.length ? (
         <Card style={{ padding: 24, alignItems: 'center' }}>
           <Txt s={15} w={600} center>{PRODUCTS.some(x => x.mineral === s.mineral) ? 'No lots match these filters.' : 'No ' + mineralName(s.mineral).toLowerCase() + ' lots are listed yet.'}</Txt>
           <Txt s={13} c={c.muted} center style={{ marginTop: 6 }}>Clear filters or check back soon.</Txt>

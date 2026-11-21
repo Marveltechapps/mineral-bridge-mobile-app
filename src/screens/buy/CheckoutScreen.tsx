@@ -22,12 +22,11 @@ export function CheckoutScreen() {
       <Label style={{ marginTop: 20, marginHorizontal: 4, marginBottom: 8 }}>ITEMS</Label>
       <ListCard>
         {s.cart.map(it => {
-          const x = product(it.pid);
-          if (!x) return null;
-          const qty = it.uIn && it.uIn !== x.unit ? it.qIn + ' ' + it.uIn + ' (' + (+it.qty.toFixed(4)) + ' ' + x.unit + ')' : it.qty + ' ' + x.unit;
+          const x = product(it.pid), unit = x ? x.unit : it.unit || '', name = x ? x.name : it.name || it.pid;
+          const qty = it.uIn && it.uIn !== unit ? it.qIn + ' ' + it.uIn + ' (' + (+it.qty.toFixed(4)) + ' ' + unit + ')' : it.qty + ' ' + unit;
           return (
             <View key={it.pid} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.hair }}>
-              <Txt s={13.5} w={600} style={{ flexShrink: 1 }}>{x.name}</Txt>
+              <Txt s={13.5} w={600} style={{ flexShrink: 1 }}>{name}</Txt>
               <Txt s={13.5} mono>{qty}</Txt>
             </View>
           );

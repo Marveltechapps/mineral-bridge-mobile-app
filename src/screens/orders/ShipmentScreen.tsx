@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Linking, StyleSheet, View } from 'react-native';
 import { useStore } from '../../context/AppStore';
 import { Card, DocList, KV, ListCard, Pill } from '../../components/ui/Blocks';
 import { Icon, IC } from '../../components/ui/Icon';
@@ -15,7 +15,9 @@ export function ShipmentScreen() {
   const o = currentOrder(store);
   if (!o) return null;
   const sh = Object.assign({ id: '', status: '', from: '', to: '', partner: '', contact: '', mode: '', pickup: '', vehicle: '', driver: '', seals: '', eta: '', location: '', pod: '', events: [] as [string, number][], docs: [] as string[] }, o.ship || {});
-  const docs = (sh.docs || []).map(n => ({ n, f: sh.id + ' · ' + sh.partner, tap: () => store.openDoc({ t: 'shipment', oid: o.id, name: n }), dl: () => store.downloadDoc({ t: 'shipment', oid: o.id, name: n }) }));
+  const podDoc = (o.docs || []).find(d => d.type === 'proof_of_delivery');
+  const docs = (o.docs || []).filter(d => d.type === 'consignment_note' || d.type === 'proof_of_delivery').map(d => { const spec = { t: d.type, num: d.number, oid: o.id }; return { n: d.label + ' ' + d.number, f: sh.id + ' · ' + sh.partner, tap: () => store.openDoc(spec), dl: () => store.downloadDoc(spec) }; });
+  const callPartner = () => { const num = /[\d+]{7,}/.test(sh.contact) ? sh.contact.replace(/[^\d+]/g, '') : ''; if (!num) return store.flash('No phone number for the logistics partner yet. Use chat.'); Linking.openURL('tel:' + num).catch(() => store.flash('Could not start a call on this device')); };
   const events = [...(sh.events || [])].reverse();
   return (
     <FadeUp style={{ paddingHorizontal: 18, paddingBottom: 24 }}>
@@ -56,7 +58,7 @@ export function ShipmentScreen() {
             <Txt s={13.5} w={600} c={c.green}>Proof of delivery</Txt>
             <Txt s={12} c={c.greenInk} style={{ marginTop: 2 }}>{sh.pod}</Txt>
           </View>
-          <Tap onPress={() => store.openDoc({ t: 'pod', oid: o.id })}><Txt s={12.5} w={600} c={c.green}>View</Txt></Tap>
+          {podDoc ? <Tap onPress={() => store.openDoc({ t: 'proof_of_delivery', num: podDoc.number, oid: o.id })}><Txt s={12.5} w={600} c={c.green}>View</Txt></Tap> : null}
         </View>
       ) : null}
       {docs.length ? (<><Label style={st.sec}>TRANSPORT DOCUMENTS</Label><DocList docs={docs} /></>) : null}
@@ -77,7 +79,7 @@ export function ShipmentScreen() {
       </Card>
       <Label style={st.sec}>CONTACT</Label>
       <View style={{ flexDirection: 'row', gap: 8 }}>
-        <Tap onPress={() => store.flash('Calling ' + (sh.partner || 'logistics partner'))} style={[st.btn, { backgroundColor: c.ink }]}><Txt s={13.5} w={600} c={c.paper}>Call logistics partner</Txt></Tap>
+        <Tap onPress={callPartner} style={[st.btn, { backgroundColor: c.ink }]}><Txt s={13.5} w={600} c={c.paper}>Call logistics partner</Txt></Tap>
         <Tap onPress={() => store.go('chat')} style={[st.btn, { backgroundColor: c.white, borderWidth: 1, borderColor: c.line }]}><Txt s={13.5} w={600}>Chat with Mineral Bridge</Txt></Tap>
       </View>
     </FadeUp>

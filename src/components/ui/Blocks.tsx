@@ -145,11 +145,11 @@ export function Field({ value, onChangeText, style, err, h = 52, multiline, mono
 }
 
 /** Small mono label above a field (9.5px) + input + optional error. */
-export function LabeledField({ label, value, onChangeText, err, placeholder, keyboard, ff, bg, h }: { label: string; value: string; onChangeText: (t: string) => void; err?: string; placeholder?: string; keyboard?: KeyboardTypeOptions; ff?: 'mono'; bg?: string; h?: number }) {
+export function LabeledField({ label, value, onChangeText, err, placeholder, keyboard, ff, bg, h, locked }: { label: string; locked?: boolean; value: string; onChangeText: (t: string) => void; err?: string; placeholder?: string; keyboard?: KeyboardTypeOptions; ff?: 'mono'; bg?: string; h?: number }) {
   return (
     <View>
       <Label s={9.5} style={{ marginHorizontal: 4, marginBottom: 5 }}>{label}</Label>
-      <Field accessibilityLabel={label} value={value} onChangeText={onChangeText} err={!!err} placeholder={placeholder} keyboard={keyboard} mono={ff === 'mono'} bg={bg} h={h} fs={bg ? 14.5 : undefined} />
+      <Field accessibilityLabel={label} editable={!locked} value={value} onChangeText={onChangeText} err={!!err} placeholder={placeholder} keyboard={keyboard} mono={ff === 'mono'} bg={bg} h={h} fs={bg ? 14.5 : undefined} />
       {err ? <FieldErr>{err}</FieldErr> : null}
     </View>
   );

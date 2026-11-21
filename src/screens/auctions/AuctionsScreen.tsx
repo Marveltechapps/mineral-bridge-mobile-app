@@ -22,7 +22,7 @@ export function AuctionsScreen() {
         </Drift>
         <Label c={c.gold}>VERIFIED LOTS · LIVE BIDDING</Label>
         <Txt serif s={26} lh={1.1} c={c.paper} style={{ marginTop: 6 }}>Bid on inspected lots</Txt>
-        <Txt s={12.5} c={c.soft} lh={1.45} style={{ marginTop: 6 }}>Bids rise in steps of $500. The highest bid when the timer ends wins, then you pay to release the lot.</Txt>
+        <Txt s={12.5} c={c.soft} lh={1.45} style={{ marginTop: 6 }}>Each bid must beat the current bid by at least the minimum step. The highest bid when the timer ends wins, then you pay to release the lot.</Txt>
       </View>
       <Segmented style={{ marginTop: 14 }} h={38} items={TABS.map(([id, label, f]) => {
         const n = A.filter(f).length, on = s.atab === id;
@@ -64,7 +64,7 @@ export function AuctionsScreen() {
       {!list.length ? (
         <Card style={{ padding: 24, alignItems: 'center' }}>
           <Txt s={15} w={600} center>{s.atab === 'mine' ? 'You have not bid on any auction yet' : 'No ' + tab[1].toLowerCase() + ' auctions right now'}</Txt>
-          <Txt s={13} c={c.muted} center style={{ marginTop: 6 }}>Live auctions are listed here as they open.</Txt>
+          <Txt s={13} c={c.muted} center style={{ marginTop: 6 }}>{s.auctionsLoading ? 'Loading auctions…' : 'Live auctions are listed here as they open.'}</Txt>
         </Card>
       ) : null}
     </FadeUp>

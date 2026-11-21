@@ -14,6 +14,7 @@ export function AuctionWonScreen() {
   const store = useStore(), s = store.state;
   const won = (s.auctions || []).find(x => x.id === s.aid && x.result === 'won');
   const p = won ? prodOf(won) : undefined;
+  const ord = won && won.orderId ? s.orders.find(x => x.id === won.orderId) : undefined, cert = ord && ord.docs && ord.docs[0];
   return (
     <FadeUp style={{ paddingTop: 40, paddingHorizontal: 22, paddingBottom: 24 }}>
       <View style={{ width: 96, height: 96, alignSelf: 'center' }}>
@@ -23,10 +24,10 @@ export function AuctionWonScreen() {
       <Txt serif s={34} lh={1.05} center style={{ marginTop: 26 }}>You won the auction</Txt>
       <Txt s={14} c={c.muted} lh={1.5} center style={{ marginTop: 10 }}>{won && p ? p.name + ' · ' + won.qty + ' ' + p.unit + ' · auction ' + won.id : ''}</Txt>
       <RefPill k="WINNING BID" v={won ? MB.money(store.aucCur(won)) : ''} s={15} />
-      <Tap onPress={() => store.openDoc({ t: 'auction', aid: s.aid })} style={{ alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 12 }}>
+      {cert ? <Tap onPress={() => store.openDoc({ t: cert.type, num: cert.number, oid: ord!.id })} style={{ alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 12 }}>
         <Icon d={IC.eye} size={15} color={c.goldInk} sw={2} circles={[[12, 12, 3]]} />
-        <Txt s={13} w={600} c={c.goldInk}>View auction result certificate</Txt>
-      </Tap>
+        <Txt s={13} w={600} c={c.goldInk}>View auction document</Txt>
+      </Tap> : null}
       <NumberedSteps style={{ marginTop: 22 }} steps={['Pay the winning bid to release the lot', 'Track pickup, transit and delivery', 'Confirm receipt to complete the order']} />
     </FadeUp>
   );

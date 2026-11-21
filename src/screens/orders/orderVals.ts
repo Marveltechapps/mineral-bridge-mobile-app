@@ -1,34 +1,39 @@
 // Values shared by the order screens (port of the prototype's orderVals / refundVals / cancelVals).
 import type { MBStore } from '../../context/store';
 import { RF_STEPS } from '../../context/store';
-import { DEMO_USER } from '../../context/state';
+import { Linking } from 'react-native';
+import { EMPTY_USER } from '../../context/state';
 import * as MB from '../../lib/mb4';
 import { imgFor } from '../../lib/images';
 import type { Auction, Order, Product } from '../../types/mineralBridge';
 
 const P = (id: string) => MB.product(id) || ({} as Product);
 
+const CONTACT: Record<string, (c: { phone: string; whatsapp: string; email: string }) => string> = {
+  Phone: c => 'tel:' + c.phone.replace(/\s/g, ''), SMS: c => 'sms:' + c.phone.replace(/\s/g, ''), Email: c => 'mailto:' + c.email,
+  WhatsApp: c => 'https://wa.me/' + c.whatsapp.replace(/\D/g, ''),
+};
+
+/** Contact channels from the support API (`GET /support/faqs` contacts); nothing is hard-coded. */
 export function contactItems(store: MBStore) {
-  return ([['Phone', 'Calling Mineral Bridge Operations'], ['SMS', 'Opening SMS'], ['Email', 'Opening email to ops@mineralbridge.com'], ['WhatsApp', 'Opening WhatsApp'], ['Chat', '']] as const)
-    .map(([l, t]) => ({ l, tap: () => (l === 'Chat' ? store.go('chat') : store.flash(t)) }));
+  return (['Phone', 'SMS', 'Email', 'WhatsApp', 'Chat'] as const).map(l => ({
+    l,
+    tap: () => {
+      if (l === 'Chat') return store.go('chat');
+      const c = store.state.contacts;
+      if (!c) { void store.task(store.remote.loadFaqs()); return store.flash('Loading contact details. Try again in a moment.'); }
+      const url = CONTACT[l](c);
+      Linking.openURL(url).catch(() => store.flash('Could not open ' + l.toLowerCase() + ' on this device'));
+    },
+  }));
 }
 
+/** Issued documents for an order, as returned by `GET /orders/:ref/documents`. */
 export function orderDocs(store: MBStore, o: Order) {
-  const st = MB.stages(o.kind), di = (k: string) => st.findIndex(x => x.key === k), DK: [string, string, string, string?][] = [];
-  if (o.auction) DK.push(['auction', 'Auction result certificate', 'Auction ' + o.auction]);
-  if (o.quote && !o.auction) DK.push(['quote', 'Quotation ' + o.quote.no + (o.quote.rev ? ' · rev ' + o.quote.rev : ''), 'Issued ' + MB.fmt(o.quote.issued)]);
-  if (o.idx >= di('contractMb')) DK.push(['contract', 'E-contract (signed by both)', 'Signed ' + MB.fmt((o.log.find(l => /countersigned|accepted as the e-contract/.test(l.text)) || o.log[o.log.length - 1]).at)]);
-  if (o.kind === 'buy' && o.idx >= di('paid')) DK.push(['payment', 'Payment receipt' + (o.txn ? ' ' + o.txn : ''), o.idx >= di('payOk') ? 'Confirmed' : 'Awaiting confirmation']);
-  if (o.kind === 'buy' && o.idx >= di('payOk')) DK.push(['invoice', 'Tax invoice INV-' + o.id.slice(-5), 'Paid']);
-  if (o.company) DK.push(['inspection', 'Mineral Bridge inspection report', MB.fmt(o.company.at)]);
-  if (o.sgs) DK.push(['sgs', 'SGS test report ' + o.sgs.no, MB.fmt(o.sgs.at)]);
-  if (o.kind === 'sell' && o.idx >= di('payout')) DK.push(['payout', 'Payment advice', 'Released to you']);
-  if (o.ship) DK.push(['shipment', 'Consignment note ' + o.ship.id, o.ship.partner]);
-  if (o.ship && o.ship.pod) DK.push(['pod', 'Proof of delivery', o.ship.pod]);
-  if (!st[o.idx + 1]) DK.push(['completion', 'Completion certificate', 'Order closed']);
-  if (o.cancelled) DK.push(['cancel', 'Cancellation confirmation', 'Cancelled ' + MB.fmt(o.cancelled.at)]);
-  [...(o.history || []), ...(o.refund ? [o.refund] : [])].filter(r => r.status === 'refunded').forEach(r => DK.push(['refund', 'Refund receipt ' + r.ref, MB.money(r.amount), r.ref]));
-  return DK.map(([t, n, f, ref]) => ({ n, f, tap: () => store.openDoc({ t, oid: o.id, ref }), dl: () => store.downloadDoc({ t, oid: o.id, ref }) }));
+  return (o.docs || []).map(d => {
+    const spec = { t: d.type, num: d.number, oid: o.id };
+    return { n: d.label + ' ' + d.number, f: MB.fmt(d.at) + (d.status && d.status !== 'issued' ? ' · ' + d.status : ''), tap: () => store.openDoc(spec), dl: () => store.downloadDoc(spec) };
+  });
 }
 
 export function phaseRows(o: Order) {
@@ -40,11 +45,11 @@ export function phaseRows(o: Order) {
 }
 
 export function auditRows(o: Order) {
-  return [...o.log].reverse().map((l, i, arr) => ({ who: l.who, text: l.text, note: l.note, at: MB.fmt(l.at), line: i === arr.length - 1 ? 'transparent' : '#EFEDE7', youBg: l.who === 'You' ? '#121214' : '#F1EFE9', youFg: l.who === 'You' ? '#D9B456' : '#3A3940', ini: l.who === 'You' ? 'YOU' : l.who.startsWith('SGS') ? 'SGS' : l.who.startsWith('Sahel') ? 'LP' : 'MB' }));
+  return [...o.log].reverse().map((l, i, arr) => ({ who: l.who, text: l.text, note: l.note, at: MB.fmt(l.at), line: i === arr.length - 1 ? 'transparent' : '#EFEDE7', youBg: l.who === 'You' ? '#121214' : '#F1EFE9', youFg: l.who === 'You' ? '#D9B456' : '#3A3940', ini: l.who === 'You' ? 'YOU' : l.who.startsWith('SGS') ? 'SGS' : l.who.startsWith('Logistics') ? 'LP' : 'MB' }));
 }
 
 export function orderLines(o: Order) {
-  return o.kind === 'sell' && o.sell ? [{ n: o.sell.name, q: o.sell.qty + ' ' + o.sell.unit, g: o.sell.grade + ' · ' + o.sell.form }] : o.items.map(it => { const p = P(it.pid); return { n: p.name, q: it.qty + ' ' + p.unit, g: p.lab ? p.grade + ' · ' + p.lab : 'Test report on request' }; });
+  return o.kind === 'sell' && o.sell ? [{ n: o.sell.name, q: o.sell.qty + ' ' + o.sell.unit, g: [o.sell.grade, o.sell.form].filter(Boolean).join(' · ') }] : o.items.map(it => { const p = P(it.pid); return { n: p.name || it.name || it.pid, q: it.qty + ' ' + MB.unitOfItem(it), g: p.lab ? p.grade + ' · ' + p.lab : p.grade || 'Test report on request' }; });
 }
 
 export const refundTone = (st: string): [string, string, string] => (({ requested: ['#FBF3E4', '#A1620B', 'Requested'], review: ['#FBF3E4', '#A1620B', 'Under review'], approved: ['#E8EEF9', '#2B4C8C', 'Approved'], processing: ['#E8EEF9', '#2B4C8C', 'Processing'], refunded: ['#E2F2E9', '#17704C', 'Refunded'], declined: ['#FDECEA', '#B42318', 'Declined'] } as Record<string, [string, string, string]>)[st] || ['#F1EFE9', '#3A3940', st]);
@@ -68,7 +73,7 @@ export function shipSteps(o: Order) {
 
 export function aucOrderCard(store: MBStore, a: Auction) {
   const s = store.state, p = P(a.pid), o = a.orderId ? s.orders.find(x => x.id === a.orderId) : undefined, lead = a.bids.length && a.bids[a.bids.length - 1].who === 'You';
-  const base = { id: a.id, title: p.name, qtyLine: a.qty + ' ' + p.unit, img: imgFor(p.img), tap: () => store.openAuction(a.id) };
+  const base = { id: a.id, title: p.name || a.name || a.id, qtyLine: a.qty + ' ' + (p.unit || a.unit || ''), img: imgFor(p.img || a.imageUrl || 'cat-precious'), tap: () => store.openAuction(a.id) };
   if (o) { const v = store.view(o); return { ...base, id: a.id + ' · ' + o.id, status: v.status, pillBg: v.pillBg, pillFg: v.pillFg, value: MB.money(store.aucCur(a)), pct: v.pct, next: v.next, tap: () => store.go('order', { oid: o.id }) }; }
   if (a.result === 'won') return { ...base, status: 'Won · pay now', pillBg: '#E2F2E9', pillFg: '#17704C', value: 'Winning bid ' + MB.money(store.aucCur(a)), pct: '20%', next: 'Pay the winning bid to release the lot for dispatch.', tap: () => store.go('auctionWon', { aid: a.id }) };
   if (a.status === 'live') return { ...base, status: lead ? 'Leading' : 'Outbid', pillBg: lead ? '#E2F2E9' : '#FDECEA', pillFg: lead ? '#17704C' : '#B42318', value: 'Current ' + MB.money(store.aucCur(a)), pct: '10%', next: (lead ? 'You are the highest bidder' : 'Another bidder is ahead. Bid again') + ' · ends in ' + store.left(a.endsAt - Date.now()) };
@@ -80,4 +85,4 @@ export function aucOrderCard(store: MBStore, a: Auction) {
 export function currentOrder(store: MBStore) {
   return store.order() || store.state.orders[0];
 }
-export const userOrDemo = (store: MBStore) => store.state.user || DEMO_USER;
+export const signedInUser = (store: MBStore) => store.state.user || EMPTY_USER;

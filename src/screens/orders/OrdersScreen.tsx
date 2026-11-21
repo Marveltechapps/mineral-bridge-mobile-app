@@ -44,7 +44,7 @@ export function OrdersScreen() {
       </View>
       {empty ? (
         <Card style={{ paddingVertical: 26, paddingHorizontal: 20, alignItems: 'center' }}>
-          <Txt s={15} w={600}>Nothing here yet</Txt>
+          <Txt s={15} w={600}>{s.ordersLoading ? 'Loading your orders…' : 'Nothing here yet'}</Txt>
           <Txt s={13} c={c.muted} center style={{ marginTop: 6 }}>Orders and sell requests appear here with full tracking.</Txt>
           <Tap onPress={() => (s.otab === 'auction' ? store.go('auctions', { atab: 'live' }) : store.jump(s.otab === 'buy' ? 'cats' : 'sellCats'))}
             style={{ marginTop: 14, width: 170, height: 44, borderRadius: 14, backgroundColor: c.ink, alignItems: 'center', justifyContent: 'center' }}>

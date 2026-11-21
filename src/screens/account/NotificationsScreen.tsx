@@ -16,13 +16,13 @@ export function NotificationsScreen() {
   return (
     <FadeUp style={{ paddingHorizontal: 18, paddingBottom: 24 }}>
       {unread ? (
-        <Tap onPress={() => { store.setState(x => ({ notifs: x.notifs.map(y => ({ ...y, read: true })) })); store.flash('All marked as read'); }} style={{ alignSelf: 'flex-end', marginHorizontal: 4, marginBottom: 10 }}>
+        <Tap onPress={() => { void store.task(store.remote.readAll()); }} style={{ alignSelf: 'flex-end', marginHorizontal: 4, marginBottom: 10 }}>
           <Txt s={13} w={600} c={c.goldInk} right>Mark all as read</Txt>
         </Tap>
       ) : null}
       <View style={{ gap: 8 }}>
         {s.notifs.map(n => (
-          <Tap key={n.id} onPress={() => { store.setState(x => ({ notifs: x.notifs.map(y => (y.id === n.id ? { ...y, read: true } : y)) })); if (n.oid) store.go('order', { oid: n.oid }); else if (n.to) store.go(n.to as AppScreen); }}>
+          <Tap key={n.id} onPress={() => { void store.task(store.remote.readNotif(n)); if (n.oid) { const oid = n.oid; if (store.state.orders.some(o => o.id === oid)) store.go('order', { oid }); else void store.task(store.remote.loadOrder(oid).then(() => { if (store.state.orders.some(o => o.id === oid)) store.go('order', { oid }); else store.flash('That order is not available'); })); } else if (n.to) store.go(n.to as AppScreen); }}>
             <Card r={18} style={{ paddingVertical: 13, paddingHorizontal: 15, flexDirection: 'row', gap: 11 }}>
               <View style={{ width: 8, height: 8, marginTop: 6, borderRadius: 4, backgroundColor: n.read ? 'transparent' : c.gold }} />
               <View style={{ flex: 1, minWidth: 0 }}>

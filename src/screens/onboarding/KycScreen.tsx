@@ -2,7 +2,6 @@ import React from 'react';
 import { Image, StyleSheet, View } from 'react-native';
 import { useStore } from '../../context/AppStore';
 import { KYC_INFO } from '../../context/store';
-import type { AppState } from '../../context/state';
 import { CheckRow, ErrBox } from '../../components/ui/Blocks';
 import { LinearFill } from '../../components/ui/Gradient';
 import { Icon, IC } from '../../components/ui/Icon';
@@ -14,7 +13,6 @@ import { idDocs } from './kycHelpers';
 
 export function KycScreen() {
   const store = useStore(), s = store.state, k = s.kyc;
-  const setK = (p: Partial<AppState['kyc']>) => store.setState(x => ({ kyc: { ...x.kyc, ...p }, kycErr: '' }));
   const docs = idDocs(store), done = docs.filter(([id]) => k[id]).length;
   return (
     <FadeUp style={{ paddingTop: 10, paddingHorizontal: 22, paddingBottom: 24 }}>
@@ -23,7 +21,7 @@ export function KycScreen() {
       <Label style={{ marginTop: 22, marginHorizontal: 2, marginBottom: 8 }}>ID TYPE</Label>
       <View style={{ flexDirection: 'row', gap: 7, flexWrap: 'wrap' }}>
         {['National ID', 'Passport', "Driver's licence"].map(t => (
-          <Tap key={t} role="radio" selected={k.idType === t} onPress={() => setK({ idType: t, front: false, back: false })} style={[st.idChip, { backgroundColor: k.idType === t ? c.ink : c.white }]}>
+          <Tap key={t} role="radio" selected={k.idType === t} onPress={() => store.setIdType(t)} style={[st.idChip, { backgroundColor: k.idType === t ? c.ink : c.white }]}>
             <Txt s={13} w={600} c={k.idType === t ? c.paper : c.ink}>{t}</Txt>
           </Tap>
         ))}
@@ -44,19 +42,8 @@ export function KycScreen() {
           return (
             <Tap key={id} scale={0.985} onPress={() => store.go('kycDoc', { kycDocId: id, kycDocErr: '' })} style={[st.doc, { borderColor: border }]}>
               <View style={st.thumb}>
-                {f && f.kind === 'img' ? <Image accessibilityLabel={label} source={{ uri: f.src }} style={[StyleSheet.absoluteFill, { width: '100%', height: '100%' }]} resizeMode="cover" /> : null}
+                {f && f.kind === 'img' && f.src ? <Image accessibilityLabel={label} source={{ uri: f.src }} style={[StyleSheet.absoluteFill, { width: '100%', height: '100%' }]} resizeMode="cover" /> : null}
                 {f && f.kind === 'pdf' ? <Txt mono s={10} w={700} c={c.red}>PDF</Txt> : null}
-                {f && f.kind === 'sample' ? (
-                  <View style={st.sample}>
-                    <LinearFill angle={135} stops={[[0, '#1E2A20'], [1, '#3F5A45']]} />
-                    <View style={{ width: 16, height: 20, borderRadius: 3, backgroundColor: c.soft }} />
-                    <View style={{ flex: 1, gap: 3 }}>
-                      <View style={{ height: 3, borderRadius: 2, backgroundColor: 'rgba(255,255,255,.7)' }} />
-                      <View style={{ height: 3, width: '70%', borderRadius: 2, backgroundColor: 'rgba(255,255,255,.5)' }} />
-                      <View style={{ height: 3, width: '50%', borderRadius: 2, backgroundColor: 'rgba(255,255,255,.5)' }} />
-                    </View>
-                  </View>
-                ) : null}
                 {!f ? <Icon d={KYC_INFO[id].icon} size={18} color={c.muted2} sw={1.8} /> : null}
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
@@ -71,7 +58,7 @@ export function KycScreen() {
         })}
       </View>
       <View style={{ marginTop: 14 }}>
-        <CheckRow on={k.consent} onPress={() => setK({ consent: !k.consent })}>I confirm these documents are genuine and consent to identity checks.</CheckRow>
+        <CheckRow on={k.consent} onPress={() => store.setConsent(!k.consent)}>I confirm these documents are genuine and consent to identity checks.</CheckRow>
       </View>
       {s.kycErr ? <ErrBox>{s.kycErr}</ErrBox> : null}
     </FadeUp>
@@ -84,7 +71,6 @@ const st = StyleSheet.create({
   track: { height: 5, borderRadius: 3, backgroundColor: c.track, overflow: 'hidden', marginBottom: 12 },
   doc: { flexDirection: 'row', alignItems: 'center', gap: 13, paddingVertical: 10, paddingLeft: 10, paddingRight: 12, borderRadius: 18, backgroundColor: c.white, borderWidth: 1.5 },
   thumb: { width: 62, height: 46, borderRadius: 10, overflow: 'hidden', backgroundColor: c.chip, alignItems: 'center', justifyContent: 'center' },
-  sample: { width: '100%', height: '100%', flexDirection: 'row', alignItems: 'center', gap: 4, padding: 5, overflow: 'hidden' },
   flag: { paddingVertical: 4, paddingHorizontal: 9, borderRadius: 99, backgroundColor: c.red },
   ok: { width: 24, height: 24, borderRadius: 12, backgroundColor: c.green, alignItems: 'center', justifyContent: 'center' },
 });

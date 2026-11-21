@@ -17,6 +17,10 @@ const IMAGES: Record<string, ImageSourcePropType> = {
   'cat-gemstone': require('../../assets/images/cat_gemstone.png'),
 };
 
+export const hasImage = (name?: string | null): boolean => !!name && Object.prototype.hasOwnProperty.call(IMAGES, name);
+
+/** Bundled image by name, or a remote image when `name` is an http(s) URL. Falls back to the precious-metals image. */
 export function imgFor(name: string): ImageSourcePropType {
+  if (/^https?:\/\//i.test(name || '')) return { uri: name };
   return IMAGES[name] || IMAGES['cat-precious'];
 }

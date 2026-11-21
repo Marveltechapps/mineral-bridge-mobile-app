@@ -22,7 +22,7 @@ export function SampleScreen({ onBack }: { onBack: () => void }) {
     <Button title="Back" onPress={onBack} />
     <Text style={styles.title}>Sample items</Text>
     {loading ? <Text accessibilityRole="text">Loading samples…</Text> : error ?
-      <View><Text accessibilityRole="alert">{error}</Text><Text>Start the service and check src/api/config.ts.</Text></View> :
+      <View><Text accessibilityRole="alert">{error}</Text><Text>Start the backend and check src/config/env.ts.</Text></View> :
       <FlatList data={items} keyExtractor={item => item.id} renderItem={({ item }) => <SampleCard item={item} />} ListEmptyComponent={<Text>No sample items.</Text>} />}
   </SafeAreaView>;
 }

@@ -8,8 +8,9 @@ import { FadeUp } from '../../components/ui/Motion';
 import { Tap } from '../../components/ui/Tap';
 import { Label, Txt } from '../../components/ui/Txt';
 import { imgFor } from '../../lib/images';
-import { mineralName, num, PRODUCTS } from '../../lib/mb4';
+import { mineralName, num, product } from '../../lib/mb4';
 import { colors as c } from '../../theme';
+import { CatalogueState } from './CatalogueState';
 import { lotLine } from './lotCard';
 
 /** CSS background positioning: size = 'cover' or a % of the box width, position as fractions. */
@@ -27,13 +28,15 @@ function Bg({ source, w, h, size = 'cover', px = 0.5, py = 0.5, flip }: { source
 
 export function ProductDetailScreen() {
   const store = useStore(), s = store.state;
-  const p = PRODUCTS.find(x => x.id === s.pid) || PRODUCTS[0];
+  const p = product(s.pid);
+  if (!p) return <FadeUp style={{ paddingHorizontal: 18, paddingBottom: 24 }}><CatalogueState what="this lot" /></FadeUp>;
   const img = imgFor(p.img), pu = p.unit, u = store.unitOf(p), can = !!UF[pu];
   const nf = (v: number) => num(+v.toFixed(6)), q = parseFloat(s.qty);
   const inCart = s.cart.find(x => x.pid === p.id);
   const docs = p.lab ? ([['Test report', p.lab + ' · ' + p.cert + '-TR.pdf'], ['Certificate of analysis', p.cert + '.pdf'], ['Origin declaration', 'Mine of origin · ' + p.origin.split(' · ')[0]]] as const).map(([n, f], i) => {
-    const t = ['lotReport', 'lotCoa', 'lotOrigin'][i];
-    return { n, f, tap: () => store.openDoc({ t, pid: p.id }), dl: () => store.downloadDoc({ t, pid: p.id }) };
+    const t = ['lotReport', 'lotCoa', 'lotOrigin'][i], type = (['lot_test_report', 'certificate_of_analysis', 'origin_declaration'] as const)[i];
+    // The API serves the real file (signed URL); lots without one keep the on-device document view.
+    return { n, f, tap: () => store.openProductDoc(p, type, t), dl: () => store.openProductDoc(p, type, t, true) };
   }) : [];
   const minShown = can ? nf(store.conv(p.min, pu, u)) + ' ' + u : p.min + ' ' + pu;
   const maxShown = can ? nf(store.conv(p.avail, pu, u)) + ' ' + u : p.avail + ' ' + pu;

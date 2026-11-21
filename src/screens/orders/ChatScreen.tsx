@@ -24,13 +24,13 @@ export function ChatScreen() {
     ...(o.refund && !['declined', 'refunded'].includes(o.refund.status) ? [{ l: 'Refund status', tap: () => store.chatSay(o, 'What is the status of my refund ' + o.refund!.ref + '?', 'Refund ' + o.refund!.ref + ' for ' + MB.money(o.refund!.amount) + ' is ' + (({ requested: 'received and waiting for review', review: 'under review by our finance team', approved: 'approved and about to be sent', processing: 'being processed by the bank' } as Record<string, string>)[o.refund!.status] || o.refund!.status) + '. Refunds reach you 3–7 working days after approval.', 'trackRefund') }] : []),
     ...(o.hold === 'discrepancy' ? [{ l: 'Refund the difference', tap: () => store.chatRefund(o, true) }] : []),
     { l: 'Where is my order?', tap: () => store.chatSay(o, 'Where is my order?', o.id + ' is at: ' + v.headline + '. ' + v.next) },
-    { l: 'Talk to a person', tap: () => store.chatSay(o, 'I would like to talk to a person.', 'An operations specialist will reply here within 2 working hours (Mon–Sat, 08:00–18:00 WAT).') },
+    { l: 'Talk to a person', tap: () => store.sendChat(o, 'I would like to talk to a person about ' + o.id + '.') },
   ];
   const send = () => {
     const t = s.msg.trim();
     if (!t) return;
-    if (/refund|money back|reimburs/i.test(t)) { store.setState({ msg: '' }); return store.chatRefund(o, false, t); }
-    store.setState(x => ({ msg: '', chat: { ...x.chat, [o.id]: [...(x.chat[o.id] || []), { me: true, text: t, at: Date.now() }] } }));
+    store.sendChat(o, t);
+    if (/refund|money back|reimburs/i.test(t)) store.chatRefund(o, false, t, false);
   };
   return (
     <View style={{ flex: 1 }}>
@@ -50,7 +50,7 @@ export function ChatScreen() {
               <View key={i} style={{ alignItems: 'flex-start', gap: 6 }}>
                 <View style={[st.bubble, st.them]}>
                   <Txt s={13.5} lh={1.45}>{m.text}</Txt>
-                  <Txt s={10.5} c={c.muted2} style={{ marginTop: 4 }}>Mineral Bridge · {MB.fmt(m.at)}</Txt>
+                  <Txt s={10.5} c={c.muted2} style={{ marginTop: 4 }}>{(m.local ? 'Assistant' : 'Mineral Bridge') + ' · ' + MB.fmt(m.at)}</Txt>
                 </View>
                 {m.action === 'refund' && store.refundable(o) ? <Tap onPress={() => store.openRefund(o, { note: m.ctx || '' })} style={st.act}><Txt s={13} w={600} c={c.gold}>Open refund form</Txt></Tap> : null}
                 {m.action === 'trackRefund' ? <Tap onPress={() => store.go('order', { oid: o.id })} style={st.act}><Txt s={13} w={600} c={c.gold}>View refund status</Txt></Tap> : null}

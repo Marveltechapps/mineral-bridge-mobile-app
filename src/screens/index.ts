@@ -44,6 +44,10 @@ import { KycStatusScreen } from './account/KycStatusScreen';
 import { NotificationsScreen } from './account/NotificationsScreen';
 import { PrefsScreen } from './account/PrefsScreen';
 import { HelpScreen } from './account/HelpScreen';
+import { ContactOtpScreen } from './account/ContactOtpScreen';
+import { PriceVariationScreen } from './orders/PriceVariationScreen';
+import { SupportInboxScreen } from './support/SupportInboxScreen';
+import { SupportThreadScreen } from './support/SupportThreadScreen';
 
 export const SCREENS: Record<AppScreen, React.ComponentType<ScreenProps>> = {
   welcome: WelcomeScreen, auth: AuthScreen, otp: OtpScreen, regType: AccountTypeScreen, regDetails: RegDetailsScreen, kyc: KycScreen, kycDoc: KycDocScreen, kycDone: KycDoneScreen,
@@ -53,4 +57,5 @@ export const SCREENS: Record<AppScreen, React.ComponentType<ScreenProps>> = {
   sellCats: SellCategoriesScreen, sellForm: SellFormScreen, sellDone: SellDoneScreen,
   profile: ProfileScreen, editProfile: EditProfileScreen, bizType: AccountTypeScreen, kycStatus: KycStatusScreen, notifs: NotificationsScreen, prefs: PrefsScreen, help: HelpScreen,
   auctions: AuctionsScreen, auction: AuctionScreen, auctionWon: AuctionWonScreen, doc: DocumentScreen,
+  contactOtp: ContactOtpScreen, priceVar: PriceVariationScreen, support: SupportInboxScreen, supportThread: SupportThreadScreen,
 };

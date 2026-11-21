@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, TextInput, View } from 'react-native';
 import { useStore } from '../../context/AppStore';
 import { ErrBox, InfoBox } from '../../components/ui/Blocks';
@@ -10,9 +10,13 @@ import { colors as c } from '../../theme';
 export function OtpScreen() {
   const store = useStore(), s = store.state, a = s.auth;
   const input = useRef<TextInput>(null);
+  const [, setNow] = useState(0);
   useEffect(() => { const t = setTimeout(() => input.current?.focus(), 350); return () => clearTimeout(t); }, []);
+  // Re-render once a second while the resend countdown runs.
+  useEffect(() => { if (s.resendAt <= Date.now()) return undefined; const i = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(i); }, [s.resendAt]);
   const email = a.method === 'email';
-  const to = email ? (a.value || 'your email') : (a.cc || '+234') + ' ' + (a.value.trim().replace(/^0+/, '') || 'your number');
+  const to = s.maskedDest || (email ? (a.value || 'your email') : (a.cc || '+234') + ' ' + (a.value.trim().replace(/^0+/, '') || 'your number'));
+  const wait = Math.max(0, Math.ceil((s.resendAt - Date.now()) / 1000));
   return (
     <FadeUp style={{ paddingTop: 10, paddingHorizontal: 22, paddingBottom: 24 }}>
       <Txt serif s={32} lh={1.05} ls={-0.3}>Enter the 4-digit code</Txt>
@@ -31,9 +35,11 @@ export function OtpScreen() {
       {s.otpErr ? <ErrBox>{s.otpErr}</ErrBox> : null}
       <View style={st.row}>
         <Txt s={13.5} c={c.muted}>Didn’t get it?</Txt>
-        <Tap onPress={() => store.flash('A new code was requested')}><Txt s={13.5} w={600} c={c.goldInk}>Resend code</Txt></Tap>
+        <Tap onPress={() => { void store.task(store.remote.resendOtp()); }} disabled={s.authBusy || wait > 0}>
+          <Txt s={13.5} w={600} c={wait > 0 ? c.muted2 : c.goldInk}>{wait > 0 ? 'Resend code in ' + wait + 's' : 'Resend code'}</Txt>
+        </Tap>
       </View>
-      <InfoBox mt={20}>Demo mode: no message is sent. Enter any 4 digits.</InfoBox>
+      {__DEV__ && s.devOtp ? <InfoBox mt={20}>Development build: the server returned the code {s.devOtp}. Production builds never show this.</InfoBox> : null}
     </FadeUp>
   );
 }

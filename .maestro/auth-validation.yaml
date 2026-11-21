@@ -1,0 +1,17 @@
+appId: com.mineralbridge
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "Create account"
+    timeout: 60000
+- tapOn: "Create account"
+- tapOn: "Email"
+- tapOn: "Send verification code"
+- assertVisible: "Enter your full name"
+- takeScreenshot: validation-name
+- tapOn:
+    text: "Full name"
+    optional: true
+- inputText: "A"
+- tapOn: "Send verification code"
+- assertVisible: "Enter your full name"

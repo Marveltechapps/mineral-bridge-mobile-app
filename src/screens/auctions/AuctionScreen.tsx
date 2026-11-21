@@ -18,7 +18,7 @@ export function AuctionScreen() {
   const p = prodOf(a), x = aucCard(store, a), live = a.status === 'live', up = a.status === 'upcoming', lead = leadOf(a), mine = mineOf(a);
   const outbid = live && !!a.outbid && !lead, won = a.result === 'won', lost = a.status === 'ended' && a.result !== 'won';
   const amt = () => Math.round(parseFloat(String(s.bidAmt).replace(/[^\d.]/g, ''))) || store.aucMin(a);
-  const rows: [string, string][] = [['Lot', p.id], ['Quantity', a.qty + ' ' + p.unit], ['Purity', p.lab ? p.grade : 'Report on request'], ['Testing company', p.lab || '—'], ['Origin', p.origin]];
+  const rows: [string, string][] = [['Lot', a.id], ['Quantity', a.qty + ' ' + p.unit], ['Purity', p.grade || 'Report on request'], ...(p.lab ? [['Testing company', p.lab] as [string, string]] : []), ...(p.origin ? [['Origin', p.origin] as [string, string]] : [])];
   const bids = [...a.bids].reverse();
   const bidAgain = () => store.setState(st0 => { const min = store.aucMin(a), mx = parseFloat(st0.autoMax) || 0; return { bidAmt: String(min), bidErr: '', autoMax: st0.autoOn && mx < min ? String(min + 5000) : st0.autoMax }; });
 
@@ -37,7 +37,7 @@ export function AuctionScreen() {
           <Txt s={11} w={700} c={x.pillFg}>{x.pill}</Txt>
         </View>
         <View style={{ position: 'absolute', left: 16, right: 16, bottom: 14 }}>
-          <Label c={c.gold}>{a.id} · {p.form}</Label>
+          <Label c={c.gold}>{[a.id, p.form].filter(Boolean).join(' · ')}</Label>
           <Txt serif s={26} lh={1.1} c={c.paper} style={{ marginTop: 4 }}>{p.name}</Txt>
         </View>
       </BgImage>
@@ -45,7 +45,7 @@ export function AuctionScreen() {
         <View style={[st.stat, { backgroundColor: c.ink }]}>
           <Label s={9.5} c={c.faint}>{x.priceLabel}</Label>
           <Txt mono s={21} w={600} c={c.gold} style={{ marginTop: 6 }}>{x.price}</Txt>
-          <Txt s={11.5} c={c.soft} style={{ marginTop: 3 }}>{a.bids.length + (a.bids.length === 1 ? ' bid' : ' bids') + (a.bids.length ? ' · step $500' : '')}</Txt>
+          <Txt s={11.5} c={c.soft} style={{ marginTop: 3 }}>{a.bids.length + (a.bids.length === 1 ? ' bid' : ' bids') + (a.bids.length ? ' · step ' + MB.money(store.aucInc(a)) : '')}</Txt>
         </View>
         <Card style={st.stat}>
           <Label s={9.5}>{x.timeLabel}</Label>
@@ -77,22 +77,22 @@ export function AuctionScreen() {
           <Label style={st.sec}>YOUR BID · MINIMUM {MB.money(store.aucMin(a))}</Label>
           <Card style={{ padding: 12 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <Tap label="Lower bid" onPress={() => store.setState({ bidAmt: String(Math.max(store.aucMin(a), amt() - 500)), bidErr: '' })} style={[st.step, { backgroundColor: c.chip }]}><Txt s={22}>−</Txt></Tap>
+              <Tap label="Lower bid" onPress={() => store.setState({ bidAmt: String(Math.max(store.aucMin(a), amt() - store.aucInc(a))), bidErr: '' })} style={[st.step, { backgroundColor: c.chip }]}><Txt s={22}>−</Txt></Tap>
               <View style={{ flex: 1 }}>
                 <TextInput accessibilityLabel="Bid amount" keyboardType="number-pad" value={s.bidAmt} onChangeText={t => store.setState({ bidAmt: t.replace(/[^\d]/g, ''), bidErr: '' })} allowFontScaling={false} style={st.bidIn} />
                 <View pointerEvents="none" style={{ position: 'absolute', left: 14, top: 0, bottom: 0, justifyContent: 'center' }}><Txt mono s={18} c={c.muted2}>$</Txt></View>
               </View>
-              <Tap label="Raise bid" onPress={() => store.setState({ bidAmt: String(amt() + 500), bidErr: '' })} style={[st.step, { backgroundColor: c.ink }]}><Txt s={22} c={c.gold}>+</Txt></Tap>
+              <Tap label="Raise bid" onPress={() => store.setState({ bidAmt: String(amt() + store.aucInc(a)), bidErr: '' })} style={[st.step, { backgroundColor: c.ink }]}><Txt s={22} c={c.gold}>+</Txt></Tap>
             </View>
             <View style={{ flexDirection: 'row', gap: 6, marginTop: 10 }}>
-              {[500, 1000, 2500].map(inc => (
+              {[1, 2, 5].map(m => m * store.aucInc(a)).map(inc => (
                 <Tap key={inc} onPress={() => store.setState({ bidAmt: String(store.aucCur(a) + inc), bidErr: '' })} style={st.quick}><Txt mono s={12.5} w={600}>{'+' + MB.money(inc)}</Txt></Tap>
               ))}
             </View>
             <Tap role="switch" checked={s.autoOn} onPress={() => store.setState({ autoOn: !s.autoOn, autoMax: s.autoMax || String(amt() + 5000) })} style={st.auto}>
               <View style={{ flex: 1 }}>
                 <Txt s={13.5} w={600}>Auto-bid</Txt>
-                <Txt s={12} c={c.muted} style={{ marginTop: 2 }}>We bid for you in $500 steps up to your limit</Txt>
+                <Txt s={12} c={c.muted} style={{ marginTop: 2 }}>We bid for you, one step at a time, up to your limit</Txt>
               </View>
               <Toggle on={s.autoOn} />
             </Tap>
@@ -126,8 +126,8 @@ export function AuctionScreen() {
           </ListCard>
         </>
       ) : null}
-      {live ? (
-        <DemoBox title="DEMO · OTHER BIDDERS AND THE AUCTION CLOCK" style={{ marginTop: 12 }}>
+      {__DEV__ && live ? (
+        <DemoBox title="DEV ONLY · LOCAL SIMULATION (NOT SENT TO THE SERVER)" style={{ marginTop: 12 }}>
           <View style={{ flexDirection: 'row', gap: 6, marginTop: 8 }}>
             <SoftBtn label="Another bidder bids" h={40} s={12.5} onPress={() => store.simOutbid()} style={{ flex: 1 }} />
             <SoftBtn label="End auction now" h={40} s={12.5} onPress={() => store.endAuction(a.id)} style={{ flex: 1 }} />

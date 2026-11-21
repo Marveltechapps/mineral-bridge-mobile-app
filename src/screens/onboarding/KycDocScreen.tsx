@@ -21,8 +21,7 @@ export function KycDocScreen() {
   const flag = store.kycFlag(id);
   const { width } = useWindowDimensions();
   const frameW = Math.floor(width - 36), frameH = Math.round(frameW / info.ratio);
-  const setDoc = (v: typeof f) => store.setState(x => ({ kyc: { ...x.kyc, [id]: v }, kycErr: '' }));
-  const useSample = () => { setDoc({ kind: 'sample', src: '', name: 'sample-' + id + '.jpg', size: '1.2 MB', at: Date.now() }); store.setState({ kycDocErr: '' }); };
+  const busy = s.kycUploading;
   const onPicked = (res: ImagePickerResponse) => {
     if (res.didCancel) return;
     if (res.errorCode) return store.setState({ kycDocErr: res.errorCode === 'camera_unavailable' ? 'Camera is not available on this device. Upload a file instead.' : res.errorCode === 'permission' ? 'Allow camera and photo access in Settings to upload.' : 'This image could not be read. Try another file.' });
@@ -32,8 +31,6 @@ export function KycDocScreen() {
   const opts = { mediaType: 'photo' as const, maxWidth: 1100, maxHeight: 1100, quality: 0.8 as const };
   const takePhoto = () => launchCamera({ ...opts, cameraType: id === 'selfie' ? 'front' : 'back', saveToPhotos: false }).then(onPicked).catch(() => store.setState({ kycDocErr: 'Camera is not available on this device. Upload a file instead.' }));
   const uploadFile = () => launchImageLibrary({ ...opts, selectionLimit: 1 }).then(onPicked).catch(() => store.setState({ kycDocErr: 'This image could not be read. Try another file.' }));
-  const sampleHead = id === 'address' ? 'UTILITY BILL · OCT 2026' : id === 'biz' ? 'CERTIFICATE OF INCORPORATION' : id === 'selfie' ? 'SELFIE WITH ID' : (k.idType || 'NATIONAL ID').toUpperCase();
-  const mrz = id === 'front' ? 'IDNGA<<OKAFOR<<ADAEZE<<<<<<<<<<<' : id === 'back' ? '<<<<<<<<<<<<<<<<<<<<A0482216<<<' : '';
   const corner = (pos2: object) => <View style={[st.corner, pos2]} />;
 
   return (
@@ -64,31 +61,11 @@ export function KycDocScreen() {
             <Txt s={12.5} c={c.soft} center style={st.hint}>{info.hint}</Txt>
           </>
         ) : null}
-        {f && f.kind === 'img' ? <FadeUp fadeOnly dur={400} style={StyleSheet.absoluteFill}><Image accessibilityLabel={'Preview of ' + lab} source={{ uri: f.src }} resizeMode="contain" style={{ width: '100%', height: '100%', backgroundColor: c.ink }} /></FadeUp> : null}
+        {f && f.kind === 'img' && f.src ? <FadeUp fadeOnly dur={400} style={StyleSheet.absoluteFill}><Image accessibilityLabel={'Preview of ' + lab} source={{ uri: f.src }} resizeMode="contain" style={{ width: '100%', height: '100%', backgroundColor: c.ink }} /></FadeUp> : null}
         {f && f.kind === 'pdf' ? (
           <FadeUp fadeOnly dur={400} style={[StyleSheet.absoluteFill, st.pdf]}>
             <View style={st.pdfDoc}><View style={st.pdfBadge}><Txt mono s={11} w={700} c="#fff">PDF</Txt></View></View>
             <Txt s={13} w={600} lines={1} style={{ maxWidth: '80%' }}>{f.name}</Txt>
-          </FadeUp>
-        ) : null}
-        {f && f.kind === 'sample' ? (
-          <FadeUp fadeOnly dur={400} style={[StyleSheet.absoluteFill, st.sampleWrap]}>
-            <View style={st.sampleCard}>
-              <LinearFill angle={135} stops={[[0, '#E8E3D3'], [1, '#CFC6AA']]} />
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Txt mono s={9.5} ls={0.8} c={c.ink2}>{sampleHead}</Txt>
-                <View style={{ width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: c.goldInk }} />
-              </View>
-              <View style={{ flex: 1, flexDirection: 'row', gap: 12, marginTop: 10 }}>
-                {id === 'front' || id === 'selfie' ? <View style={{ width: '30%', borderRadius: 8, overflow: 'hidden' }}><LinearFill stops={[[0, '#9C9AA0'], [1, '#6B6A70']]} /></View> : null}
-                <View style={{ flex: 1, gap: 7, justifyContent: 'center' }}>
-                  <View style={[st.bar, { height: 7, width: '80%', backgroundColor: c.ink2 }]} />
-                  <View style={[st.bar, { width: '60%' }]} /><View style={[st.bar, { width: '70%' }]} /><View style={[st.bar, { width: '45%' }]} />
-                </View>
-              </View>
-              {mrz ? <Txt mono s={9} ls={1} c={c.ink2} lines={1} style={{ marginTop: 8 }}>{mrz}</Txt> : null}
-              <View style={st.demoTag}><Txt mono s={9} c={c.paper}>DEMO SAMPLE</Txt></View>
-            </View>
           </FadeUp>
         ) : null}
       </View>
@@ -105,18 +82,16 @@ export function KycDocScreen() {
             </Card>
           </FadeUp>
           <View style={st.grid2}>
-            <Tap onPress={uploadFile} style={st.light46}><Icon d={IC.replace} size={16} color={c.ink} sw={1.9} /><Txt s={13.5} w={600}>Replace</Txt></Tap>
-            <Tap onPress={() => { setDoc(false); store.flash('Document removed'); }} style={[st.light46, { borderColor: c.redLine }]}><Txt s={13.5} w={600} c={c.red}>Remove</Txt></Tap>
+            <Tap onPress={uploadFile} disabled={busy} style={st.light46}><Icon d={IC.replace} size={16} color={c.ink} sw={1.9} /><Txt s={13.5} w={600}>{busy ? 'Uploading…' : 'Replace'}</Txt></Tap>
+            <Tap onPress={() => { store.removeKycFile(id); store.flash('Document removed'); }} disabled={busy} style={[st.light46, { borderColor: c.redLine }]}><Txt s={13.5} w={600} c={c.red}>Remove</Txt></Tap>
           </View>
-          {flag ? <Tap onPress={useSample} style={{ marginTop: 10 }}><Txt s={12.5} w={600} c={c.goldInk} center>Use a new sample document (demo)</Txt></Tap> : null}
         </>
       ) : (
         <>
           <View style={[st.grid2, { marginTop: 12 }]}>
-            <Tap onPress={takePhoto} style={[st.big, { backgroundColor: c.ink }]}><Icon d={IC.camera} size={17} color={c.gold} sw={1.9} /><Txt s={14} w={600} c={c.paper}>Take photo</Txt></Tap>
-            <Tap onPress={uploadFile} style={[st.big, { backgroundColor: c.white, borderWidth: 1, borderColor: c.line }]}><Icon d={IC.upload} size={17} color={c.ink} sw={1.9} /><Txt s={14} w={600}>Upload file</Txt></Tap>
+            <Tap onPress={takePhoto} disabled={busy} style={[st.big, { backgroundColor: c.ink, opacity: busy ? 0.6 : 1 }]}><Icon d={IC.camera} size={17} color={c.gold} sw={1.9} /><Txt s={14} w={600} c={c.paper}>{busy ? 'Uploading…' : 'Take photo'}</Txt></Tap>
+            <Tap onPress={uploadFile} disabled={busy} style={[st.big, { backgroundColor: c.white, borderWidth: 1, borderColor: c.line, opacity: busy ? 0.6 : 1 }]}><Icon d={IC.upload} size={17} color={c.ink} sw={1.9} /><Txt s={14} w={600}>Upload file</Txt></Tap>
           </View>
-          <Tap onPress={useSample} style={{ marginTop: 10 }}><Txt s={12.5} w={600} c={c.goldInk} center>Use a sample document (demo)</Txt></Tap>
         </>
       )}
       {s.kycDocErr ? <ErrBox>{s.kycDocErr}</ErrBox> : null}
@@ -144,10 +119,7 @@ const st = StyleSheet.create({
   pdf: { alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: c.paper },
   pdfDoc: { width: 74, height: 94, borderRadius: 8, backgroundColor: c.white, borderWidth: 1, borderColor: c.line, boxShadow: '0 8px 20px rgba(18,18,20,.10)', alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 10 },
   pdfBadge: { paddingVertical: 3, paddingHorizontal: 8, borderRadius: 5, backgroundColor: c.red },
-  sampleWrap: { alignItems: 'center', justifyContent: 'center', padding: 18, backgroundColor: '#2A2A2E' },
-  sampleCard: { width: '100%', height: '100%', borderRadius: 14, overflow: 'hidden', boxShadow: '0 10px 26px rgba(0,0,0,.35)', padding: 14 },
   bar: { height: 6, borderRadius: 4, backgroundColor: c.muted },
-  demoTag: { position: 'absolute', right: 10, bottom: 10, paddingVertical: 3, paddingHorizontal: 7, borderRadius: 6, backgroundColor: 'rgba(18,18,20,.75)' },
   fileCard: { marginTop: 12, paddingVertical: 12, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
   fileOk: { width: 34, height: 34, borderRadius: 17, backgroundColor: c.greenBg, alignItems: 'center', justifyContent: 'center' },
   grid2: { flexDirection: 'row', gap: 8, marginTop: 10 },

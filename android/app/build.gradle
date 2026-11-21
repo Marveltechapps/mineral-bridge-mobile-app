@@ -2,6 +2,12 @@ apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 
+// Apply Google Services only when Firebase config is present (push notifications).
+def googleServicesJson = file("google-services.json")
+if (googleServicesJson.exists()) {
+    apply plugin: "com.google.gms.google-services"
+}
+
 /**
  * This is the configuration block to customize your React Native Android app.
  * By default you don't need to apply any configuration, just uncomment the lines you need.
@@ -18,10 +24,10 @@ react {
     // cliFile = file("../../node_modules/react-native/cli.js")
 
     /* Variants */
-    //   The list of variants to that are debuggable. For those we're going to
-    //   skip the bundling of the JS bundle and the assets. By default is just 'debug'.
-    //   If you add flavors like lite, prod, etc. you'll have to list your debuggableVariants.
-    // debuggableVariants = ["liteDebug", "prodDebug"]
+    // Debug stays debuggable (the React Native default). The debug APK loads
+    // JavaScript from Metro with __DEV__ === true, so src/config/env.ts uses the
+    // isolated development API (http://10.0.2.2:5011/v2) instead of the release URLs.
+    // Do not set debuggableVariants = []: that bundles release-mode JS into the debug APK.
 
     /* Bundling */
     //   A list containing the node command and its flags. Default is just 'node'.
@@ -59,6 +65,9 @@ react {
  */
 def enableProguardInReleaseBuilds = false
 
+/** True only when this release is the isolated cleartext test artifact, not a store build. */
+def releaseCleartext = (System.getenv("MB_RELEASE_CLEARTEXT") ?: "") == "true"
+
 /**
  * The preferred build flavor of JavaScriptCore (JSC)
  *
@@ -92,18 +101,54 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        release {
+            // Production upload keystore — never commit the .jks or passwords.
+            // Provide via ~/.gradle/gradle.properties or CI secrets:
+            //   MB_UPLOAD_STORE_FILE=/absolute/path/to/mineralbridge-upload.jks
+            //   MB_UPLOAD_STORE_PASSWORD=...
+            //   MB_UPLOAD_KEY_ALIAS=...
+            //   MB_UPLOAD_KEY_PASSWORD=...
+            if (project.hasProperty('MB_UPLOAD_STORE_FILE')) {
+                storeFile file(MB_UPLOAD_STORE_FILE)
+                storePassword MB_UPLOAD_STORE_PASSWORD
+                keyAlias MB_UPLOAD_KEY_ALIAS
+                keyPassword MB_UPLOAD_KEY_PASSWORD
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
+            // Local API (http://10.0.2.2:...) needs cleartext in debug builds only.
+            manifestPlaceholders = [usesCleartextTraffic: "true"]
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            // Cleartext is on only for an explicit isolated test artifact (MB_RELEASE_CLEARTEXT=true).
+            // A store release leaves the variable unset and allows HTTPS only.
+            manifestPlaceholders = [usesCleartextTraffic: releaseCleartext ? "true" : "false"]
+            if (project.hasProperty('MB_UPLOAD_STORE_FILE')) {
+                signingConfig signingConfigs.release
+            } else {
+                // Local/CI artifact builds without upload credentials still produce an APK/AAB,
+                // signed with the debug key for smoke testing only — NOT Play Store ready.
+                signingConfig signingConfigs.debug
+                logger.warn('MB_UPLOAD_STORE_FILE not set: release is signed with the debug keystore (not Play-ready).')
+            }
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
+    }
+}
+
+def prodUrlScript = file("../../scripts/require-prod-urls.mjs")
+tasks.register("assertReleaseProdUrls", Exec) {
+    group = "verification"
+    commandLine "node", prodUrlScript.absolutePath
+}
+tasks.configureEach { task ->
+    def n = task.name
+    if (n == "createBundleReleaseJsAndAssets" || n == "bundleReleaseJsAndAssets") {
+        task.dependsOn("assertReleaseProdUrls")
     }
 }
 

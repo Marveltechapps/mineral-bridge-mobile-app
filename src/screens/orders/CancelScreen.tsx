@@ -14,7 +14,8 @@ export function CancelScreen() {
   if (!o) return null;
   const ov = store.view(o), ci = store.cancelInfo(o), sell = o.kind === 'sell', refund = ci.mode === 'refund';
   const setC = (p: Partial<typeof cx>) => store.setState(x => ({ cx: { ...(x.cx || { reason: '', note: '', agree: false }), ...p }, cxErr: '' }));
-  const R = sell ? ['Sold elsewhere', 'Price too low', 'Changed my mind', 'Cannot meet inspection dates', 'Other'] : ['Ordered by mistake', 'Found another supplier', 'No longer needed', 'Delivery time too long', 'Other'];
+  const srvR = (s.om[o.id] && s.om[o.id].cancelInfo && s.om[o.id].cancelInfo!.reasons) || [];
+  const R = srvR.length ? srvR : sell ? ['Sold elsewhere', 'Price too low', 'Changed my mind', 'Cannot meet inspection dates', 'Other'] : ['Ordered by mistake', 'Found another supplier', 'No longer needed', 'Delivery time too long', 'Other'];
   const paid = o.quote ? MB.money(o.quote.total - (o.refundedSoFar || 0)) : '';
   const pts = refund ? ['You have paid ' + paid + '. Cancelling needs a full refund, which you request on the next screen.', 'The order is paused while Mineral Bridge reviews the refund, usually within 2 working days.', 'Once the refund is completed the order closes as Cancelled and refunded. Dispatch will not go ahead.']
     : sell ? ['Nothing has been inspected or paid, so there is no charge.', 'Any agreed price and signed e-contract are withdrawn.', 'You can submit a new sell request for this mineral at any time.']

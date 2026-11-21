@@ -1,0 +1,11 @@
+# Copy to android/prod-endpoints.properties (gitignored) or export the same names
+# before `./gradlew assembleRelease`. The release build fails when these are empty.
+#
+# Store release (required):
+# MB_PROD_API_BASE_URL=https://<deployed-api-host>/v2
+# MB_PROD_WS_BASE_URL=wss://<deployed-api-host>
+#
+# Isolated emulator check only. Do not ship this combination.
+# MB_RELEASE_CLEARTEXT=true
+# MB_PROD_API_BASE_URL=http://10.0.2.2:5011/v2
+# MB_PROD_WS_BASE_URL=ws://10.0.2.2:5011

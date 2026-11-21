@@ -1,5 +1,5 @@
-// Port of the design's mb4-data.js: catalog, order stages and the simulated
-// counterparty updates used by the demo buttons. All data is local demo data.
+// Port of the design's mb4-data.js: order stage engine + formatting helpers. The catalogue registries
+// (CATS / PRODUCTS) are filled from the API at runtime. `demoUpdate` is DEV-only (simulated counterparties).
 import type { Category, Order, Product, Stage } from '../types/mineralBridge';
 
 const group = (s: string) => s.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -30,53 +30,25 @@ export const day = (t: number) => {
   return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()] + ' ' + d.getDate() + ' ' + M[d.getMonth()];
 };
 
-export const CATS: Category[] = [
-  { id: 'precious', name: 'Precious metals', img: 'cat-precious', minerals: [['gold', 'Gold'], ['silver', 'Silver'], ['platinum', 'Platinum']] },
-  { id: 'base', name: 'Base metals', img: 'cat-industrial', minerals: [['copper', 'Copper'], ['bauxite', 'Aluminium / Bauxite'], ['nickel', 'Nickel'], ['zinc', 'Zinc'], ['lead', 'Lead'], ['tin', 'Tin']] },
-  { id: 'critical', name: 'Critical minerals', img: 'cat-critical', minerals: [['lithium', 'Lithium'], ['cobalt', 'Cobalt'], ['tantalum', 'Tantalum'], ['niobium', 'Niobium'], ['rare', 'Rare earth elements']] },
-  { id: 'industrial', name: 'Industrial minerals', img: 'cat-industrial', minerals: [['quartz', 'Quartz'], ['graphite', 'Graphite'], ['mica', 'Mica'], ['feldspar', 'Feldspar'], ['limestone', 'Limestone']] },
-  { id: 'gems', name: 'Gemstones', img: 'cat-gemstone', minerals: [['diamonds', 'Diamonds'], ['emeralds', 'Emeralds'], ['rubies', 'Rubies'], ['sapphires', 'Sapphires']] },
-];
+// Live catalogue registries. They start EMPTY and are filled from the API (`catalogue.service`) by the store.
+// They are mutable arrays (same reference forever) so the many sync `product()/PRODUCTS` call sites keep working.
+export const CATS: Category[] = [];
+export const PRODUCTS: Product[] = [];
+const ALIAS = new Map<string, string>();
 
-type Row = [string, string, string, string, number, string, number, string, string, string, string, string, number];
-// id, mineral, name, form, available, unit, min, grade, lab, certificate, origin, image, internal reference price per unit
-const P: Row[] = [
-  ['G-1041', 'gold', 'Gold Doré Bar', 'Doré bars', 12.5, 'kg', 1, 'Au 92.1%', 'SGS Lagos', 'SGS-NG-26-4471', 'Ilesha, Osun · Nigeria', 'gold-dore', 61400],
-  ['G-1042', 'gold', 'Gold Bullion Bar', 'Bullion', 8, 'kg', 1, 'Au 99.99%', 'Bureau Veritas Accra', 'BV-GH-26-0912', 'Kumasi · Ghana', 'gold-bullion', 75100],
-  ['G-1043', 'gold', 'Gold Bars · 1 kg', 'Bars', 20, 'bar', 1, 'Au 99.5%', 'SGS Dubai', 'SGS-AE-26-1180', 'Dubai · UAE', 'gold-bullion', 74300],
-  ['G-1044', 'gold', 'Gold Biscuits · 100 g', 'Biscuits', 60, 'pc', 5, 'Au 99.9%', 'Intertek Johannesburg', 'ITK-ZA-26-3307', 'Johannesburg · South Africa', 'gold-biscuit', 7480],
-  ['G-1045', 'gold', 'Alluvial Gold Dust', 'Dust', 4.2, 'kg', 0.5, 'Au 89.4%', 'SGS Lagos', 'SGS-NG-26-4502', 'Kebbi · Nigeria', 'gold-dust', 58100],
-  ['G-1046', 'gold', 'Gold Concentrate', 'Concentrate', 18, 't', 2, 'Au 48 g/t', '', '', 'Geita · Tanzania', 'gold-concentrate', 2900],
-  ['G-1047', 'gold', 'Gold Grain', 'Grain', 2.4, 'kg', 0.5, 'Au 99.5%', 'SGS Lagos', 'SGS-NG-26-4519', 'Osogbo · Nigeria', 'grain-shot', 74800],
-  ['G-1048', 'gold', 'Gold Doré Bar · Lot B', 'Doré bars', 0, 'kg', 1, 'Au 90.6%', 'SGS Lagos', 'SGS-NG-26-4390', 'Ilesha, Osun · Nigeria', 'gold-dore', 60200],
-  ['S-2011', 'silver', 'Silver Bars', 'Bars', 120, 'kg', 10, 'Ag 99.9%', 'SGS Lima', 'SGS-PE-26-0778', 'Arequipa · Peru', 'm-silver', 940],
-  ['S-2012', 'silver', 'Silver Bullion', 'Bullion', 40, 'kg', 5, 'Ag 99.95%', 'Alex Stewart International', 'ASI-MX-26-1204', 'Zacatecas · Mexico', 'm-silver', 955],
-  ['P-3011', 'platinum', 'Platinum Bars', 'Bars', 6, 'kg', 0.5, 'Pt 99.95%', 'SGS Johannesburg', 'SGS-ZA-26-0331', 'Rustenburg · South Africa', 'm-platinum', 32500],
-  ['C-4011', 'copper', 'Copper Concentrate', 'Concentrate', 500, 't', 50, 'Cu 28.4%', 'SGS Lubumbashi', 'SGS-CD-26-2210', 'Katanga · DR Congo', 'cat-industrial', 2700],
-  ['C-4012', 'copper', 'Copper Cathode', 'Cathode', 120, 't', 25, 'Cu 99.99%', 'Alex Stewart International', 'ASI-ZM-26-0415', 'Copperbelt · Zambia', 'cat-industrial', 9600],
-  ['A-4021', 'bauxite', 'Metallurgical Bauxite', 'Ore', 5000, 't', 500, 'Al₂O₃ 48%', 'SGS Conakry', 'SGS-GN-26-0098', 'Boké · Guinea', 'cat-industrial', 62],
-  ['N-4031', 'nickel', 'Nickel Laterite Ore', 'Ore', 2000, 't', 200, 'Ni 1.8%', '', '', 'Sulawesi · Indonesia', 'cat-industrial', 55],
-  ['Z-4041', 'zinc', 'Zinc Concentrate', 'Concentrate', 800, 't', 50, 'Zn 52%', 'Intertek Windhoek', 'ITK-NA-26-0612', 'Rosh Pinah · Namibia', 'cat-industrial', 1450],
-  ['L-4051', 'lead', 'Lead Concentrate', 'Concentrate', 600, 't', 50, 'Pb 60%', 'SGS Lagos', 'SGS-NG-26-4380', 'Ebonyi · Nigeria', 'cat-industrial', 1250],
-  ['T-4061', 'tin', 'Cassiterite Concentrate', 'Concentrate', 40, 't', 5, 'Sn 68%', 'Alex Stewart Kigali', 'ASI-RW-26-0207', 'Rutongo · Rwanda', 'cat-industrial', 21000],
-  ['LI-5011', 'lithium', 'Spodumene Concentrate', 'Concentrate', 1000, 't', 100, 'Li₂O 6.0%', 'SGS Harare', 'SGS-ZW-26-0544', 'Bikita · Zimbabwe', 'cat-critical', 980],
-  ['LI-5012', 'lithium', 'Lepidolite Ore', 'Ore', 300, 't', 50, 'Li₂O 3.2%', '', '', 'Nasarawa · Nigeria', 'cat-critical', 410],
-  ['CO-5021', 'cobalt', 'Cobalt Hydroxide', 'Hydroxide', 200, 't', 20, 'Co 34%', 'SGS Lubumbashi', 'SGS-CD-26-2231', 'Kolwezi · DR Congo', 'cat-critical', 9800],
-  ['TA-5031', 'tantalum', 'Coltan Concentrate', 'Concentrate', 12, 't', 1, 'Ta₂O₅ 30%', 'Alex Stewart Kigali', 'ASI-RW-26-0219', 'Rubaya · DR Congo', 'cat-critical', 48000],
-  ['NB-5041', 'niobium', 'Pyrochlore Concentrate', 'Concentrate', 50, 't', 5, 'Nb₂O₅ 55%', '', '', 'Jos Plateau · Nigeria', 'cat-critical', 26000],
-  ['RE-5051', 'rare', 'Mixed Rare Earth Carbonate', 'Carbonate', 25, 't', 2, 'TREO 92%', 'SGS Mombasa', 'SGS-KE-26-0120', 'Kwale · Kenya', 'cat-critical', 11500],
-  ['Q-6011', 'quartz', 'High-Purity Quartz', 'Lump', 300, 't', 20, 'SiO₂ 99.8%', 'Intertek Chennai', 'ITK-IN-26-0931', 'Tamil Nadu · India', 'cat-industrial', 220],
-  ['GR-6021', 'graphite', 'Flake Graphite', 'Flake', 400, 't', 20, 'C 94%', 'SGS Maputo', 'SGS-MZ-26-0187', 'Balama · Mozambique', 'cat-industrial', 640],
-  ['MI-6031', 'mica', 'Muscovite Mica', 'Sheet', 80, 't', 5, 'Grade V-2', '', '', 'Andhra Pradesh · India', 'cat-industrial', 520],
-  ['FE-6041', 'feldspar', 'Potash Feldspar', 'Lump', 1000, 't', 100, 'K₂O 11%', 'Intertek Chennai', 'ITK-IN-26-0950', 'Rajasthan · India', 'cat-industrial', 85],
-  ['LS-6051', 'limestone', 'Cement-Grade Limestone', 'Aggregate', 10000, 't', 1000, 'CaCO₃ 96%', '', '', 'Ogun · Nigeria', 'cat-industrial', 24],
-  ['D-7011', 'diamonds', 'Rough Diamonds', 'Rough', 1200, 'ct', 50, 'Gem-quality mix', 'GIA Antwerp', 'KP-BW-26-00871', 'Orapa · Botswana', 'cat-gemstone', 410],
-  ['E-7021', 'emeralds', 'Rough Emeralds', 'Rough', 3400, 'ct', 100, 'Medium green, AA', 'Gübelin Gem Lab', 'GGL-26-2214', 'Kagem · Zambia', 'cat-gemstone', 95],
-  ['R-7031', 'rubies', 'Rough Rubies', 'Rough', 900, 'ct', 25, 'Pigeon blood, A', '', '', 'Montepuez · Mozambique', 'cat-gemstone', 180],
-  ['SA-7041', 'sapphires', 'Blue Sapphires', 'Rough', 2100, 'ct', 50, 'Royal blue, AA', 'GIA Bangkok', 'GIA-TH-26-5520', 'Ilakaka · Madagascar', 'cat-gemstone', 140],
-];
-export const PRODUCTS: Product[] = P.map(r => ({ id: r[0], mineral: r[1], name: r[2], form: r[3], avail: r[4], unit: r[5], min: r[6], grade: r[7], lab: r[8], cert: r[9], origin: r[10], img: r[11], ref: r[12] }));
-export const product = (id: string) => PRODUCTS.find(x => x.id === id);
+/** Replace the category list in place. */
+export function setCategories(list: Category[]) { CATS.splice(0, CATS.length, ...list); }
+/** Insert or replace products by id. `aliases` maps other ids (e.g. internal ids) to the product id. */
+export function upsertProducts(list: Product[], aliases?: Record<string, string>) {
+  list.forEach(p => { const i = PRODUCTS.findIndex(x => x.id === p.id); if (i >= 0) PRODUCTS[i] = p; else PRODUCTS.push(p); });
+  if (aliases) Object.keys(aliases).forEach(k => ALIAS.set(k, aliases[k]));
+}
+/** Drop every product of a mineral (before reloading that mineral). */
+export function dropMineral(mineral: string) {
+  for (let i = PRODUCTS.length - 1; i >= 0; i--) if (PRODUCTS[i].mineral === mineral) PRODUCTS.splice(i, 1);
+}
+export function clearCatalogue() { CATS.length = 0; PRODUCTS.length = 0; ALIAS.clear(); }
+export const product = (id?: string) => (id ? PRODUCTS.find(x => x.id === id) || PRODUCTS.find(x => x.id === ALIAS.get(id)) : undefined);
 export const mineralName = (id: string) => {
   for (const c of CATS) for (const [m, n] of c.minerals) if (m === id) return n;
   return id;
@@ -86,7 +58,7 @@ export const catOf = (id: string) => CATS.find(c => c.minerals.some(([m]) => m =
 export const BUYER_TYPES: [string, string, string][] = [['refinery', 'Refineries and smelters', 'Buy doré and concentrate to refine into high-grade metal'], ['house', 'International trading houses', 'Bulk volumes to hedge or distribute globally'], ['industry', 'Manufacturing & industrial end-users', 'Lithium, cobalt, quartz and more for production'], ['jewel', 'Jewelry manufacturers & artisans', 'Precious metals and gemstones for consumer goods'], ['investor', 'Retail investors & collectors', 'Bars, bullion and rare specimens'], ['wholesale', 'B2B wholesalers', 'Medium-to-large lots to warehouse and resell']];
 export const SELLER_TYPES: [string, string, string][] = [['asm', 'Artisanal and small-scale miners (ASMs)', 'Independent or family-run operations'], ['industrial', 'Industrial mining companies', 'Large-scale producers of base metals or bulk minerals'], ['coop', 'Mining cooperatives', 'Registered groups of artisanal miners'], ['dealer', 'Licensed local dealers / brokers', 'Aggregate from miners and handle local paperwork'], ['exporter', 'International traders / exporters', 'Export logistics, customs and compliance'], ['scrap', 'Individual salvagers / scrap collectors', 'Recycled metal, e-waste and precious scrap']];
 
-export const WHO: Record<string, string> = { you: 'You', mb: 'Mineral Bridge Operations', sgs: 'SGS (independent inspector)', lp: 'Sahel Secure Freight (logistics)' };
+export const WHO: Record<string, string> = { you: 'You', mb: 'Mineral Bridge Operations', sgs: 'SGS (independent inspector)', lp: 'Logistics partner' };
 type StageRow = [string, string, Stage['actor'], string, number];
 // key, label, actor, customer action screen, phase index
 const BUY: StageRow[] = [
@@ -116,8 +88,10 @@ export const stages = (k: string): Stage[] => (k === 'sell' ? SELL_STAGES : BUY_
 export const phases = (k: string) => (k === 'sell' ? SELL_PH : BUY_PH);
 
 export const orderValue = (o: Order) =>
-  o.kind === 'sell' && o.sell ? o.sell.qty * (o.sell.ref || 1000) : o.items.reduce((a, it) => { const p = product(it.pid); return a + (p ? p.ref * it.qty : 0); }, 0);
-export const titleOf = (o: Order) => (o.kind === 'sell' && o.sell ? o.sell.name : o.items.map(it => (product(it.pid) || ({} as Product)).name).join(' + '));
+  o.kind === 'sell' && o.sell ? o.sell.qty * (o.sell.ref || 1000) : o.items.reduce((a, it) => { const p = product(it.pid); return a + (it.amount !== undefined ? it.amount : p ? p.ref * it.qty : 0); }, 0);
+export const titleOf = (o: Order) => (o.kind === 'sell' && o.sell ? o.sell.name : o.items.map(it => it.name || (product(it.pid) || ({} as Product)).name || it.pid).join(' + '));
+/** Unit label of an order line (API orders carry it on the line; catalogue products otherwise). */
+export const unitOfItem = (it: { pid: string; unit?: string }) => it.unit || (product(it.pid) || ({} as Product)).unit || '';
 
 export type DemoUpdate = [string, string, Partial<Order>?];
 

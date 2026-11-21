@@ -10,6 +10,7 @@ import { Label, Txt } from '../../components/ui/Txt';
 import { imgFor } from '../../lib/images';
 import { CATS, PRODUCTS } from '../../lib/mb4';
 import { colors as c } from '../../theme';
+import { CatalogueState } from '../buy/CatalogueState';
 
 /** Home tab ("home" screen in the design). */
 export function DashboardScreen() {
@@ -18,7 +19,7 @@ export function DashboardScreen() {
   const tile = Math.floor((width - 36 - 8) / 2);
   const first = u ? (String(u.name || '').trim().split(' ')[0] || String(u.business || '').trim() || String(u.email || '').split('@')[0] || 'Trader') : 'Guest';
   const mine = s.orders.map(o => store.view(o)), actN = mine.filter(v => v.you).length;
-  const unread = s.notifs.filter(n => !n.read).length;
+  const unread = u ? s.unread : 0;
   const kycText = u && u.kyc === 'pending' ? 'KYC under review · ' + u.kycRef : u && u.kyc === 'rejected' ? 'KYC needs another document' : 'Complete KYC to buy or sell';
   const stats: [string, number][] = [['Action needed', actN], ['Active orders', mine.filter(v => v.kind === 'buy' && !v.done && !v.rej).length], ['Sell requests', mine.filter(v => v.kind === 'sell' && !v.done && !v.rej).length]];
   const goSignup = () => { store.setState(x => ({ auth: { ...x.auth, mode: 'signup' } })); store.go('auth'); };
@@ -87,6 +88,7 @@ export function DashboardScreen() {
         </>
       ) : null}
       <Label style={st.sec}>MINERAL CATEGORIES</Label>
+      {!CATS.length ? <CatalogueState what="minerals" /> : null}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         {CATS.map(cat => (
           <Tap key={cat.id} scale={0.97} onPress={() => store.go('minerals', { cat: cat.id, search: '' })} style={{ width: tile }}>

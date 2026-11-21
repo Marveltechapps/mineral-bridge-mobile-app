@@ -3,9 +3,10 @@ import { imgFor } from '../../lib/images';
 import * as MB from '../../lib/mb4';
 import type { Auction, Product } from '../../types/mineralBridge';
 
-export const prodOf = (a: Auction) => MB.product(a.pid) || ({} as Product);
-export const mineOf = (a: Auction) => a.bids.some(b => b.who === 'You');
-export const leadOf = (a: Auction) => a.bids.length > 0 && a.bids[a.bids.length - 1].who === 'You';
+/** Catalogue product when the auction links to one, otherwise a view built from the auction's own API fields. */
+export const prodOf = (a: Auction): Product => MB.product(a.pid) || ({ id: a.id, mineral: '', name: a.name || 'Auction lot', form: '', avail: 0, unit: a.unit || 'kg', min: 0, grade: a.grade || '', lab: '', cert: '', origin: '', img: a.imageUrl || '', ref: 0 } as Product);
+export const mineOf = (a: Auction) => !!a.mine || a.bids.some(b => b.who === 'You');
+export const leadOf = (a: Auction) => (a.bids.length ? a.bids[a.bids.length - 1].who === 'You' : !!a.leading);
 
 /** Auction card values (list rows and the detail hero). */
 export function aucCard(store: MBStore, a: Auction) {

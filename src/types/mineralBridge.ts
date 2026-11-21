@@ -74,11 +74,26 @@ export interface Address {
 }
 
 export interface Quote {
+  /** True when `total` is only the list-price total (the API did not expose the quoted amount). */
+  est?: boolean;
   no: string;
   total: number;
   issued: number;
   valid: number;
   rev?: number;
+}
+
+export interface PriceVariation {
+  id: string;
+  /** Previous and proposed totals in major units. */
+  from: number;
+  to: number;
+  currency: string;
+  reason: string;
+  note: string;
+  status: string;
+  at: number;
+  decisionNote?: string;
 }
 
 export interface Refund {
@@ -114,12 +129,23 @@ export interface SellInfo {
 export interface OrderItem {
   pid: string;
   qty: number;
+  /** API orders: line name, unit of `qty`, line amount in major units. */
+  name?: string;
+  unit?: string;
+  amount?: number;
+  /** Cart items: server-side problem with this line (`withdrawn`, `insufficient`, ...). */
+  issue?: string;
   qIn?: number;
   uIn?: string;
 }
 
 export interface Order {
   id: string;
+  /** Internal order id and optimistic-concurrency version (API orders). */
+  sid?: string;
+  ver?: number;
+  /** Current workflow step key from the API. */
+  step?: string;
   kind: OrderKind;
   idx: number;
   created: number;
@@ -130,6 +156,12 @@ export interface Order {
   quote?: Quote;
   form?: { method?: string; terms?: string; date?: string; time?: string; address?: string };
   hold?: string;
+  /** Reason given by the team for the current hold (API orders). */
+  holdNote?: string;
+  /** Issued documents for this order (API orders). */
+  docs?: { number: string; type: string; label: string; status: string; at: number }[];
+  /** Price variations proposed by Mineral Bridge on a sell order (API orders). Amounts are in major units. */
+  variations?: PriceVariation[];
   rejected?: string;
   cancelled?: { reason: string; note: string; at: number };
   refund?: Refund;
@@ -170,6 +202,7 @@ export interface KycFile {
   name: string;
   size: string;
   at: number;
+  fileId?: string;
 }
 
 export interface Bid {
@@ -192,6 +225,19 @@ export interface Auction {
   outbid?: boolean;
   autoMax?: number;
   orderId?: string;
+  /** API fields. `id` is the human reference; `sid` the internal id (used by the WebSocket). */
+  sid?: string;
+  name?: string;
+  unit?: string;
+  grade?: string;
+  imageUrl?: string;
+  inc?: number;
+  minNext?: number;
+  ver?: number;
+  count?: number;
+  reserveMet?: boolean;
+  mine?: boolean;
+  leading?: boolean;
 }
 
 export interface Notif {
@@ -210,10 +256,14 @@ export interface ChatMsg {
   at: number;
   action?: string;
   ctx?: string;
+  /** Client-side helper message (not stored on the server). */
+  local?: boolean;
 }
 
 export interface DocSpec {
   t: string;
+  /** Issued document number (API documents). */
+  num?: string;
   oid?: string;
   pid?: string;
   aid?: string;

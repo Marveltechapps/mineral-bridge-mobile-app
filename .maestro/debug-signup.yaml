@@ -1,0 +1,20 @@
+appId: com.mineralbridge
+---
+# Debug builds show the isolated server's development OTP. No SMS is sent.
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "Create account"
+    timeout: 60000
+- tapOn: "Create account"
+- tapOn: "Email"
+- tapOn: "Adaeze Okafor"
+- inputText: "Maestro Buyer"
+- tapOn: "you@company.com"
+- inputText: ${MAESTRO_EMAIL}
+- hideKeyboard
+- tapOn: "Send verification code"
+- extendedWaitUntil:
+    visible: "Development build: the server returned the code"
+    timeout: 30000
+- takeScreenshot: debug-otp

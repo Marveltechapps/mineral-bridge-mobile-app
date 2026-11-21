@@ -6,23 +6,20 @@ import { FadeUp } from '../../components/ui/Motion';
 import { Label, Txt } from '../../components/ui/Txt';
 import * as MB from '../../lib/mb4';
 import { colors as c } from '../../theme';
-import { currentOrder, userOrDemo } from './orderVals';
+import { currentOrder, signedInUser } from './orderVals';
 
 export function ContractScreen() {
   const store = useStore(), s = store.state;
   const o = currentOrder(store);
   if (!o) return null;
-  const ov = store.view(o), u = userOrDemo(store), sell = o.kind === 'sell', amount = o.quote ? MB.money(o.quote.total) : '';
-  const clauses: [string, string][] = [
-    ['Product', sell && o.sell ? o.sell.name + ', ' + o.sell.qty + ' ' + o.sell.unit : MB.titleOf(o)], ['Price', amount || 'Per quotation'],
-    sell ? ['Inspection', 'Mineral Bridge inspects the product on site, then an independent third party (SGS) tests it. Both parties must accept the reports.'] : ['Quality', 'As stated in the lot test report and certificate of analysis. No pre-purchase inspection is required.'],
-    sell ? ['Payment', 'Released to the seller after inspection approval, before pickup.'] : ['Payment', 'Per the agreed payment terms, confirmed by Mineral Bridge before dispatch.'],
-    ['Delivery', 'Insured transport by an approved logistics partner, with tracking.'], ['Disputes', 'Any discrepancy at delivery is recorded and resolved before completion.'],
-  ];
-  const you = o.log.some(l => l.text === 'E-contract signed by you') ? 'Signed' : 'Pending', mb = o.log.some(l => l.text === 'E-contract countersigned') ? 'Signed' : 'Pending';
-  return (
+  const ov = store.view(o), u = signedInUser(store), sell = o.kind === 'sell', amount = o.quote ? MB.money(o.quote.total) : '';
+  const ct = s.om[o.id] && s.om[o.id].contract;
+  const clauses: [string, string][] = ct && ct.clauses && ct.clauses.length ? ct.clauses.map(x => [x.h, x.text] as [string, string]) : [['E-contract', 'Loading the contract text from Mineral Bridge…']];
+  if (ct && amount) clauses.unshift(['Price', amount]);
+  const you = ct && ct.signatures && ct.signatures.customer ? 'Signed' : 'Pending', mb = ct && ct.signatures && ct.signatures.platform ? 'Signed' : 'Pending';  return (
     <FadeUp style={{ paddingHorizontal: 18, paddingBottom: 24 }}>
       <SummaryCard id={ov.id} title={ov.title} sub={ov.qtyLine} />
+      {ct ? <Txt mono s={11.5} c={c.muted} style={{ marginTop: 10, marginHorizontal: 4 }}>{'E-contract ' + ct.number}</Txt> : null}
       <Card style={{ paddingVertical: 4, paddingHorizontal: 16, marginTop: 12 }}>
         <View style={{ flexDirection: 'row', gap: 10, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.hair }}>
           <View style={{ flex: 1 }}><Label s={9.5}>BUYER</Label><Txt s={13} w={600} style={{ marginTop: 4 }}>{sell ? 'Mineral Bridge Ltd' : u.business + ' (' + u.name + ')'}</Txt></View>

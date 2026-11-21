@@ -7,6 +7,7 @@ import { Tap } from '../../components/ui/Tap';
 import { Label, Txt } from '../../components/ui/Txt';
 import { CATS, mineralName } from '../../lib/mb4';
 import { colors as c } from '../../theme';
+import { CatalogueState } from '../buy/CatalogueState';
 
 export function SellCategoriesScreen() {
   const store = useStore(), s = store.state, d = s.draft;
@@ -46,6 +47,7 @@ export function SellCategoriesScreen() {
           </ListCard>
         </View>
       ))}
+      {!CATS.length ? <CatalogueState what="minerals" /> : null}
       {none ? <Card style={{ marginTop: 16, padding: 22, alignItems: 'center' }}><Txt s={14} c={c.muted} center>No mineral matches “{s.search}”.</Txt></Card> : null}
     </FadeUp>
   );

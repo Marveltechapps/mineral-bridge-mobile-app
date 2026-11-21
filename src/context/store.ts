@@ -1,16 +1,18 @@
-// Mineral Bridge app store: a direct port of the design prototype's logic
-// (navigation stack, order stage engine, KYC, auctions, refunds, documents).
-// Counterparty steps (Mineral Bridge, SGS, logistics) are simulated by the
-// labelled demo buttons, exactly as in the handoff.
+// Mineral Bridge app store: UI state, validation and navigation (stack, stage engine view, KYC, auctions, refunds,
+// documents). Everything that talks to the backend lives in ./remote.ts (live /v2 API). The demo, simOutbid,
+// endAuction and resetDemo helpers are development-only local simulations and do nothing in release builds.
 import { Share } from 'react-native';
 import * as MB from '../lib/mb4';
 import type { AppScreen } from '../navigation/types';
 import type { Auction, DocSpec, KycDocId, KycFile, Order, Product } from '../types/mineralBridge';
-import { DEMO_USER, emptyDraft, emptyRefund, fresh, seed, seedAuctions } from './state';
+import { EMPTY_USER, emptyDraft, emptyRefund, fresh } from './state';
 import type { AppState, Errs } from './state';
 import { imgFor } from '../lib/images';
+import { moneyMajor, pendingVariation, resolveCountryCode } from '../lib/mappers';
+import { Remote, contactIdentifier, fmtBytes } from './remote';
+import type { OtpChannel, ProductDocumentType } from '../api/types';
 
-export const ACTION: Record<string, string> = { quote: 'Review quotation', contract: 'Review and sign e-contract', payInsp: 'Submit payment details', sellConfirm: 'Submit seller confirmation form', report: 'Review inspection reports', pay: 'Make payment', receipt: 'Confirm receipt' };
+export const ACTION: Record<string, string> = { quote: 'Review quotation', contract: 'Review and sign e-contract', payInsp: 'Submit payment details', sellConfirm: 'Submit seller confirmation form', report: 'Review inspection reports', pay: 'Make payment', receipt: 'Confirm receipt', priceVar: 'Review price update' };
 export const HOLD: Record<string, string> = { refund: 'Refund requested · order paused while Mineral Bridge reviews it', quoteDeclined: 'Quotation declined · waiting for a revised quotation', clarify: 'Clarification requested · waiting on Mineral Bridge', discrepancy: 'Discrepancy raised · order kept open', changes: 'Changes requested · please update your details' };
 export const UF: Record<string, number> = { g: 1, kg: 1000, t: 1e6 };
 export const REFUND_REASONS = ['Delivery delayed', 'Quantity or quality issue', 'Damaged in transit', 'Paid twice', 'No longer needed', 'Other'];
@@ -51,31 +53,55 @@ type Patch = Partial<AppState> | ((s: AppState) => Partial<AppState> | null);
 
 export class MBStore {
   state: AppState = fresh();
+  readonly remote = new Remote(this);
   private listeners = new Set<() => void>();
   private toastTimer?: ReturnType<typeof setTimeout>;
   private ticker?: ReturnType<typeof setInterval>;
+  private pending = new Set<Promise<unknown>>();
+  private dueSeen = new Map<string, number>();
   version = 0;
 
   subscribe = (fn: () => void) => { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; };
   getVersion = () => this.version;
   setState(patch: Patch, cb?: () => void) {
+    const prev = this.state.screen;
     const p = typeof patch === 'function' ? patch(this.state) : patch;
-    if (p) { this.state = { ...this.state, ...p }; this.version++; this.listeners.forEach(l => l()); }
+    if (p) {
+      this.state = { ...this.state, ...p }; this.version++; this.listeners.forEach(l => l());
+      if (this.state.screen !== prev) this.remote.onScreen(this.state.screen, prev);
+    }
     if (cb) cb();
   }
 
+  /** Track a background promise so tests (and shutdown) can wait for it. */
+  task<T>(p: Promise<T>): Promise<T> {
+    this.pending.add(p);
+    const done = () => { this.pending.delete(p); };
+    p.then(done, done);
+    return p;
+  }
+  /** Resolves once every tracked async task (including ones started by other tasks) has settled. */
+  async idle() { while (this.pending.size) await Promise.allSettled([...this.pending]); }
+
   start() {
     if (this.ticker) return;
+    this.remote.start();
     this.ticker = setInterval(() => {
       const st = this.state;
       if (st.screen === 'pay' && st.pmethod === 'Bitcoin') return this.setState({ tick: Date.now() });
+      if (st.screen === 'chat') this.remote.pollChat();
+      if (st.screen === 'supportThread') this.remote.pollSupport();
       if (!['auctions', 'auction', 'orders'].includes(st.screen)) return;
-      const due = (st.auctions || []).filter(a => a.status === 'live' && a.endsAt <= Date.now());
-      due.forEach(a => this.endAuction(a.id, true));
+      // A live auction past its end time is settled by the server; ask it for the result (at most every 10 s).
+      (st.auctions || []).filter(a => a.status === 'live' && a.endsAt <= Date.now()).forEach(a => {
+        if (Date.now() - (this.dueSeen.get(a.id) || 0) < 10000) return;
+        this.dueSeen.set(a.id, Date.now());
+        void this.task(this.remote.loadAuction(a.id));
+      });
       this.setState({ tick: Date.now() });
     }, 1000);
   }
-  stop() { if (this.ticker) clearInterval(this.ticker); this.ticker = undefined; }
+  stop() { if (this.ticker) clearInterval(this.ticker); this.ticker = undefined; this.remote.stop(); }
 
   flash(t: string) { if (this.toastTimer) clearTimeout(this.toastTimer); this.setState({ toast: t }); this.toastTimer = setTimeout(() => this.setState({ toast: '' }), 2400); }
   go(s: AppScreen, extra?: Partial<AppState>) { this.setState(x => Object.assign({ stack: [...x.stack, x.screen], screen: s, sortOpen: false }, extra || {})); this.top(); }
@@ -98,7 +124,6 @@ export class MBStore {
   order(id?: string) { return this.state.orders.find(o => o.id === (id || this.state.oid)); }
   patchOrder(id: string, fn: (o: Order) => Order) { this.setState(x => ({ orders: x.orders.map(o => (o.id === id ? fn(Object.assign({}, o)) : o)) })); }
   log(o: Order, who: string, text: string, note?: string, extra?: Partial<Order>) { o.log = [...o.log, { who, text, note: note || '', at: Date.now() }]; return Object.assign(o, extra || {}); }
-  youDo(text: string, note: string, extra?: Partial<Order>) { const o = this.order(); if (!o) return; this.patchOrder(o.id, c => { c.idx += 1; c.hold = ''; return this.log(c, 'You', text, note, extra); }); }
   notify(o: Order | null | undefined, title: string, note: string) { this.setState(x => ({ notifs: [{ id: 'n' + Date.now() + Math.random().toString(36).slice(2, 5), oid: o ? o.id : '', to: o ? '' : 'kycStatus', title, note, at: Date.now(), read: false }, ...x.notifs] })); }
   gate(ret: string) {
     const u = this.state.user;
@@ -110,7 +135,12 @@ export class MBStore {
     return true;
   }
 
+  /**
+   * DEVELOPMENT ONLY. Local simulation of counterparty steps (Mineral Bridge, SGS, logistics) on the order held in
+   * memory. It never calls the API and the next refresh from the server overwrites it. Production builds ignore it.
+   */
   demo(kind: '' | 'reject' | 'changes' | 'refundDecline') {
+    if (!__DEV__) return;
     const o = this.order(); if (!o) return;
     const st = MB.stages(o.kind), next = st[o.idx + 1], now = Date.now();
     if (kind === 'reject') { this.patchOrder(o.id, c => this.log(c, MB.WHO.mb, 'Order rejected', 'The seller has withdrawn this quantity. Please choose another lot.', { rejected: 'The seller has withdrawn this quantity. Please choose another lot.' })); this.notify(o, 'Order rejected', 'Reason shared in your order.'); return; }
@@ -119,6 +149,7 @@ export class MBStore {
     if (o.hold === 'refund' && o.refund) {
       const r = o.refund, nx = ({ requested: 'review', review: 'approved', approved: 'processing', processing: 'refunded' } as Record<string, string>)[r.status];
       const TXT = ({ review: ['Refund under review', 'Our finance team is checking the payment and order status.'], approved: ['Refund approved', MB.money(r.amount) + ' will be returned to ' + r.to + '.'], processing: ['Refund processing', 'Sent to the bank. Allow 3–7 working days to appear.'], refunded: ['Refund completed', MB.money(r.amount) + ' refunded · bank reference RF' + String(now).slice(-8)] } as Record<string, [string, string]>)[nx];
+      if (!TXT) return;
       this.patchOrder(o.id, c => {
         const rf = Object.assign({}, c.refund!, { status: nx as typeof r.status, ['at_' + nx]: now });
         if (nx === 'refunded') { rf.bankRef = 'RF' + String(now).slice(-8); c.refundedSoFar = (c.refundedSoFar || 0) + rf.amount; }
@@ -149,37 +180,40 @@ export class MBStore {
     return c;
   }
   view(o: Order): View {
-    const st = MB.stages(o.kind), next = st[o.idx + 1], last = st[o.idx];
+    const st = MB.stages(o.kind), next = st[o.idx + 1], last = st[Math.max(0, o.idx)] || st[0];
     const refunded = !!(o.refund && o.refund.status === 'refunded' && o.refund.type === 'full');
     const cx = !!o.cancelled, done = !next || refunded || cx, rej = !!o.rejected || cx;
-    const you = !!next && next.actor === 'you' && !rej && (!o.hold || o.hold === 'changes');
-    const status = rej ? (cx ? 'Cancelled' : 'Rejected') : refunded ? 'Refunded' : done ? 'Completed' : o.hold ? HOLD[o.hold].split(' · ')[0] : you ? 'Action needed' : 'Waiting on ' + ACTOR[next.actor];
+    const needVar = !!pendingVariation(o) && !rej && !done;
+    const you = needVar || (!!next && next.actor === 'you' && !rej && (!o.hold || o.hold === 'changes'));
+    const holdText = o.hold ? (o.holdNote ? HOLD[o.hold].split(' · ')[0] + ' · ' + o.holdNote : HOLD[o.hold] || 'On hold') : '';
+    const status = rej ? (cx ? 'Cancelled' : 'Rejected') : refunded ? 'Refunded' : done ? 'Completed' : needVar ? 'Action needed' : o.hold ? (HOLD[o.hold] || 'On hold').split(' · ')[0] : you ? 'Action needed' : 'Waiting on ' + ACTOR[next.actor];
     const tone = cx ? ['#F1EFE9', '#3A3940'] : rej ? ['#FDECEA', '#B42318'] : refunded ? ['#EDE9F7', '#4B3B8F'] : done ? ['#E2F2E9', '#17704C'] : you || o.hold ? ['#FBF3E4', '#A1620B'] : ['#F1EFE9', '#3A3940'];
-    const value = o.quote ? MB.money(o.quote.total) : 'By quotation';
+    const value = o.quote ? (o.quote.est ? 'From ' : '') + MB.money(o.quote.total) : 'By quotation';
     const p0 = o.kind === 'sell' && o.sell ? MB.PRODUCTS.find(p => p.mineral === o.sell!.mineral) : MB.product(o.items[0] && o.items[0].pid);
+    const lastAt = o.log.length ? o.log[o.log.length - 1].at : o.created;
     return {
       id: o.id, kind: o.kind, title: MB.titleOf(o), status, pillBg: tone[0], pillFg: tone[1],
       headline: rej ? (cx ? (o.kind === 'sell' ? 'Sell request cancelled' : 'Order cancelled') : 'Order rejected') : refunded ? 'Order cancelled and refunded' : done ? (o.kind === 'sell' ? 'Sale completed' : 'Order completed') : last.label,
-      next: rej ? (cx ? 'Cancelled by you on ' + MB.fmt(o.cancelled!.at) + ' · ' + o.cancelled!.reason + (o.kind === 'sell' ? '. No inspection or payment took place.' : '. Nothing was charged.') : o.rejected || '') : refunded ? MB.money(o.refund!.amount) + ' refunded to ' + o.refund!.to + ' · ref ' + o.refund!.ref : done ? 'All records are stored in your history.' : o.hold ? HOLD[o.hold] : you ? 'Your turn: ' + ACTION[next.screen] : 'Next: ' + next.label + ' (' + ACTOR[next.actor] + ')',
-      you, actionLabel: you ? ACTION[next.screen] : '', actionScreen: you ? next.screen : '',
-      canDemo: !rej && !done && !you && o.hold !== 'changes', demoLabel: o.hold === 'refund' ? 'Simulate: refund ' + (({ requested: 'review started', review: 'approved', approved: 'processing', processing: 'completed' } as Record<string, string>)[(o.refund || { status: '' }).status] || 'update') : o.hold ? 'Simulate Mineral Bridge response' : next ? 'Simulate: ' + next.label : '',
-      canReject: !rej && !!next && next.key === 'accepted', canDeclineRefund: o.hold === 'refund' && ['requested', 'review'].includes((o.refund || { status: '' }).status), canChanges: !rej && !!next && next.key === 'formOk' && !o.hold,
+      next: rej ? (cx ? 'Cancelled by you on ' + MB.fmt(o.cancelled!.at) + ' · ' + o.cancelled!.reason + (o.kind === 'sell' ? '. No inspection or payment took place.' : '. Nothing was charged.') : o.rejected || '') : refunded ? MB.money(o.refund!.amount) + ' refunded to ' + o.refund!.to + ' · ref ' + o.refund!.ref : done ? 'All records are stored in your history.' : needVar ? 'Your turn: ' + ACTION.priceVar : o.hold ? holdText : you ? 'Your turn: ' + ACTION[next.screen] : 'Next: ' + next.label + ' (' + ACTOR[next.actor] + ')',
+      you, actionLabel: needVar ? ACTION.priceVar : you ? ACTION[next.screen] : '', actionScreen: needVar ? 'priceVar' : you ? next.screen : '',
+      canDemo: __DEV__ && !rej && !done && !you && o.hold !== 'changes', demoLabel: o.hold === 'refund' ? 'Simulate: refund ' + (({ requested: 'review started', review: 'approved', approved: 'processing', processing: 'completed' } as Record<string, string>)[(o.refund || { status: '' }).status] || 'update') : o.hold ? 'Simulate Mineral Bridge response' : next ? 'Simulate: ' + next.label : '',
+      canReject: __DEV__ && !rej && !!next && next.key === 'accepted', canDeclineRefund: __DEV__ && o.hold === 'refund' && ['requested', 'review'].includes((o.refund || { status: '' }).status), canChanges: __DEV__ && !rej && !!next && next.key === 'formOk' && !o.hold,
       pct: Math.round((o.idx + 1) / st.length * 100) + '%', step: 'STAGE ' + (o.idx + 1) + ' OF ' + st.length, value,
-      qtyLine: o.kind === 'sell' && o.sell ? o.sell.qty + ' ' + o.sell.unit + ' · ' + o.sell.grade : o.items.map(it => it.qty + ' ' + (MB.product(it.pid) || ({} as Product)).unit).join(' + '),
+      qtyLine: o.kind === 'sell' && o.sell ? o.sell.qty + ' ' + o.sell.unit + (o.sell.grade ? ' · ' + o.sell.grade : '') : o.items.filter(it => it.qty > 0).map(it => it.qty + ' ' + MB.unitOfItem(it)).join(' + '),
       img: imgFor(p0 ? p0.img : 'cat-precious'),
-      updated: MB.fmt(o.log[o.log.length - 1].at), done, rej,
+      updated: MB.fmt(lastAt), done, rej,
     };
   }
 
   meta(): Meta {
     const s = this.state, u = s.user;
     const M: Partial<Record<AppScreen, Partial<Meta>>> = {
-      welcome: {}, auth: { header: 1, canBack: 1, title: s.auth.mode === 'signup' ? 'Create account' : 'Sign in', cta: 'Send verification code' },
-      otp: { header: 1, canBack: 1, title: 'Verify', cta: 'Verify and continue' },
+      welcome: {}, auth: { header: 1, canBack: 1, title: s.auth.mode === 'signup' ? 'Create account' : 'Sign in', cta: s.authBusy ? 'Sending code…' : 'Send verification code' },
+      otp: { header: 1, canBack: 1, title: 'Verify', cta: s.authBusy ? 'Verifying…' : 'Verify and continue' },
       regType: { header: 1, title: 'Account type', step: 'STEP 1 OF 3 · ACCOUNT TYPE', prog: '33%', cta: 'Continue' },
-      regDetails: { header: 1, canBack: 1, title: 'Your details', step: 'STEP 2 OF 3 · DETAILS', prog: '66%', cta: 'Continue' },
-      kyc: { header: 1, canBack: 1, title: 'KYC verification', step: 'STEP 3 OF 3 · KYC', prog: '100%', cta: 'Submit for review' },
-      kycDoc: { header: 1, canBack: 1, title: 'Upload document', step: 'STEP 3 OF 3 · KYC', prog: '100%', cta: s.kyc[s.kycDocId] ? 'Save and continue' : 'Upload to continue', ctaOpacity: s.kyc[s.kycDocId] ? 1 : 0.45 },
+      regDetails: { header: 1, canBack: 1, title: 'Your details', step: 'STEP 2 OF 3 · DETAILS', prog: '66%', cta: s.authBusy ? 'Creating account…' : 'Continue' },
+      kyc: { header: 1, canBack: 1, title: 'KYC verification', step: 'STEP 3 OF 3 · KYC', prog: '100%', cta: s.kycBusy ? 'Submitting…' : 'Submit for review' },
+      kycDoc: { header: 1, canBack: 1, title: 'Upload document', step: 'STEP 3 OF 3 · KYC', prog: '100%', cta: s.kycUploading ? 'Uploading…' : s.kyc[s.kycDocId] ? 'Save and continue' : 'Upload to continue', ctaOpacity: s.kycUploading || !s.kyc[s.kycDocId] ? 0.45 : 1 },
       kycDone: { cta: s.returnTo ? 'Continue where you left off' : 'Go to home' },
       home: { tabs: 'home' }, cats: { tabs: 'buy', header: 1, title: 'Buy minerals', cartBtn: 1 },
       minerals: { tabs: 'buy', header: 1, canBack: 1, title: (MB.CATS.find(c => c.id === s.cat) || { name: '' }).name, cartBtn: 1 },
@@ -202,7 +236,7 @@ export class MBStore {
       chat: { header: 1, canBack: 1, title: 'Chat with Mineral Bridge' },
       shipment: { header: 1, canBack: 1, title: 'Shipment tracking' },
       sellCats: { tabs: 'sell', header: 1, title: 'Sell minerals' },
-      sellForm: { header: 1, canBack: 1, title: 'Sell ' + MB.mineralName(s.draft.mineral || 'gold'), cta: 'Submit sell request', cta2: 'Save draft', cta2Fg: '#121214' },
+      sellForm: { header: 1, canBack: 1, title: 'Sell ' + MB.mineralName(s.draft.mineral || 'gold'), cta: s.placing ? 'Submitting…' : 'Submit sell request', cta2: 'Save draft', cta2Fg: '#121214' },
       sellDone: { cta: 'Track request', cta2: 'Back to home' },
       profile: { tabs: 'profile', header: 1, title: 'Profile' },
       editProfile: { header: 1, canBack: 1, title: 'Edit profile', cta: 'Save changes' },
@@ -214,9 +248,13 @@ export class MBStore {
       auction: Object.assign({ header: 1, canBack: 1, title: 'Auction' }, this.aucCta()),
       auctionWon: { cta: this.aucWonCta(), cta2: 'Back to auctions' },
       doc: { header: 1, canBack: 1, title: 'Document', cta: 'Download', cta2: 'Share' },
+      contactOtp: { header: 1, canBack: 1, title: s.contact && s.contact.field === 'email' ? 'Verify new email' : 'Verify new number', cta: s.contactBusy ? 'Verifying…' : 'Verify and save' },
+      priceVar: this.varMeta(),
+      support: { header: 1, canBack: 1, title: 'Support messages', cta: 'New message' },
+      supportThread: { header: 1, canBack: 1, title: s.supRef ? s.supRef : 'New message' },
     };
     const m: Meta = Object.assign({ ctaOpacity: 1, cta2Fg: '#6B6A70', tabs: '' }, M[s.screen] || {});
-    if (s.placing) m.ctaOpacity = 0.6;
+    if (s.placing || s.authBusy || s.kycBusy || s.contactBusy || s.varBusy) m.ctaOpacity = 0.6;
     return m;
   }
 
@@ -231,19 +269,22 @@ export class MBStore {
 
   primary() {
     const s = this.state, sc = s.screen, u = s.user;
+    const bg = (p: Promise<unknown>) => { void this.task(p); };
     const H: Partial<Record<AppScreen, () => void>> = {
       auth: () => {
+        if (s.authBusy) return;
         const a = s.auth, v = a.value.trim();
         if (a.mode === 'signup' && a.name.trim().length < 2) return this.setState({ authErr: 'Enter your full name' });
         const nd = v.replace(/\D/g, '').replace(/^0+/, '');
         if (a.method !== 'email' && (nd.length < 7 || nd.length > 12)) return this.setState({ authErr: 'Enter a valid WhatsApp number for ' + (a.cc || '+234') + ' (7–12 digits, without the country code)' });
         if (a.method === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v)) return this.setState({ authErr: 'Enter a valid email address' });
-        this.setState({ authErr: '', otp: '', otpErr: '' }); this.go('otp');
+        this.setState({ authErr: '', otp: '', otpErr: '' });
+        bg(this.remote.requestOtp());
       },
       otp: () => {
+        if (s.authBusy) return;
         if (!/^\d{4}$/.test(s.otp)) return this.setState({ otpErr: 'Enter all 4 digits' });
-        if (s.auth.mode === 'signin') { this.setState(x => ({ user: Object.assign({}, DEMO_USER), orders: x.orders.length ? x.orders : seed() })); this.flash('Signed in'); return this.resume(s.returnTo); }
-        this.jump('regType');
+        bg(this.remote.verifyOtp());
       },
       regType: () => {
         const r = s.reg;
@@ -253,19 +294,18 @@ export class MBStore {
         this.setState({ regErr: '' }); this.go('regDetails');
       },
       regDetails: () => {
-        const r = s.reg, a = s.auth;
+        if (s.authBusy) return;
+        const r = s.reg;
         if (this.isBusiness(r) && r.business.trim().length < 2) return this.setState({ regErr: 'Enter your business or trading name' });
         if (!r.country.trim()) return this.setState({ regErr: 'Enter your country' });
+        if (!resolveCountryCode(r.country)) return this.setState({ regErr: 'Choose a supported country (type its full name, e.g. Nigeria)' });
         if (!r.terms) return this.setState({ regErr: 'Accept the terms to continue' });
-        const contact = a.method === 'email' ? { email: a.value.trim(), phone: '' } : { phone: (a.cc || '+234') + ' ' + a.value.trim().replace(/^0+/, ''), email: '' };
-        this.setState({
-          regErr: '', orders: [], notifs: [], cart: [], reminders: {},
-          auctions: seedAuctions().map(x => Object.assign({}, x, { bids: x.bids.filter(b => b.who !== 'You'), result: x.result === 'won' ? 'lost' as const : x.result })),
-          user: Object.assign({ name: a.name.trim(), business: r.business.trim() || 'Individual', country: r.country.trim(), role: r.role, buyerType: r.role !== 'seller' ? r.buyerType : '', sellerType: r.role !== 'buyer' ? r.sellerType : '', kyc: 'none' as const, kycRef: '', via: a.method }, contact),
-        });
-        this.go('kyc');
+        if (!s.registrationToken) return this.setState({ regErr: 'Your verification expired. Go back and request a new code.' });
+        this.setState({ regErr: '' });
+        bg(this.remote.register());
       },
       kyc: () => {
+        if (s.kycBusy) return;
         const k = s.kyc, need: string[] = [];
         if (!k.front) need.push('ID front');
         if (k.idType !== 'Passport' && !k.back) need.push('ID back');
@@ -276,8 +316,8 @@ export class MBStore {
         const stale = (Object.keys(KYC_INFO) as KycDocId[]).filter(id => this.kycFlag(id));
         if (stale.length) return this.setState({ kycErr: 'Re-upload requested: ' + stale.map(id => KYC_INFO[id].title.toLowerCase()).join(', ') + '. Replace ' + (stale.length > 1 ? 'them' : 'it') + ' before resubmitting.' });
         if (!k.consent) return this.setState({ kycErr: 'Tick the consent box to submit' });
-        this.setState(x => ({ kycErr: '', user: Object.assign({}, x.user!, { kycFlags: {}, kyc: 'pending' as const, kycRef: 'MB-KYC-26-' + String(Date.now()).slice(-5), kycAt: Date.now() }) }));
-        this.jump('kycDone');
+        this.setState({ kycErr: '' });
+        bg(this.remote.submitKyc());
       },
       kycDone: () => this.resume(s.returnTo),
       auction: () => this.auctionPrimary(),
@@ -285,46 +325,57 @@ export class MBStore {
       cancel: () => this.submitCancel(),
       auctionWon: () => this.auctionToOrder(s.aid, true),
       doc: () => this.downloadDoc(),
-      kycDoc: () => { if (!s.kyc[s.kycDocId]) return this.setState({ kycDocErr: 'Upload a photo or file first' }); this.flash('Document saved'); this.nextKycDoc(); },
+      kycDoc: () => { if (s.kycUploading) return; if (!s.kyc[s.kycDocId]) return this.setState({ kycDocErr: 'Upload a photo or file first' }); this.flash('Document saved'); this.nextKycDoc(); },
       detail: () => { const p = MB.product(s.pid); if (p && p.avail <= 0) return this.go('lots', { mineral: p.mineral, fform: 'All', labOnly: false, search: '' }); this.addToCart(); },
       cart: () => { if (!s.cart.length) return; if (!this.gate('checkout')) return; this.prefillShip(); this.go('checkout'); },
       checkout: () => this.placeOrder(),
       placed: () => { this.setState({ stack: ['orders'], screen: 'order' }); this.top(); },
       sellDone: () => { this.setState({ stack: ['orders'], screen: 'order' }); this.top(); },
-      quote: () => { if (!this.stepOpen()) return; const o = this.order()!; this.youDo('Quotation accepted', 'Accepted by ' + u!.name + ' · ' + MB.money(o.quote ? o.quote.total : 0)); this.flash('Quotation accepted'); this.back(); },
+      quote: () => { if (!this.stepOpen()) return; bg(this.remote.acceptQuote()); },
       contract: () => {
         if (!this.stepOpen()) return;
         if (!s.sign.read) return this.setState({ signErr: 'Confirm you have read the contract' });
         if (s.sign.name.trim().toLowerCase() !== u!.name.toLowerCase()) return this.setState({ signErr: 'Type your full name exactly as ' + u!.name });
-        this.youDo('E-contract signed by you', 'Signed by ' + u!.name + ' · e-signature, time and device recorded'); this.setState({ sign: { read: false, name: '' }, signErr: '' }); this.flash('Contract signed'); this.back();
+        this.setState({ signErr: '' });
+        bg(this.remote.signContract(s.sign.name));
       },
       payInsp: () => this.submitPayInsp(),
       sellConfirm: () => this.submitSellConfirm(),
-      report: () => { if (!this.stepOpen()) return; this.youDo('Inspection reports accepted by you', 'Mineral Bridge inspection and SGS reports accepted by ' + u!.name); this.flash('Reports accepted'); this.back(); },
+      report: () => { if (!this.stepOpen()) return; bg(this.remote.acceptReports()); },
       pay: () => {
         if (s.paying || !this.stepOpen()) return;
         const method = s.pmethod || 'UPI';
-        if (method === 'Bitcoin') { const tx = (s.btcTx || '').trim(); if (!/^[0-9a-fA-Fx]{16,}$/.test(tx)) return this.setState({ payErr: 'Paste the transaction ID from your wallet (at least 16 characters)' }); this.youDo('Payment made', 'Bitcoin · TXID ' + tx.slice(0, 10) + '… · waiting for 3 confirmations', { paidAt: Date.now(), form: { method } }); this.setState({ btcTx: '', payErr: '' }); this.flash('Bitcoin payment submitted · confirming on-chain'); return this.back(); }
-        if (method === 'Bank transfer') { if (!s.proof) return this.setState({ payErr: 'Upload the transfer receipt first' }); this.youDo('Payment made', 'Bank transfer · receipt uploaded · awaiting confirmation', { paidAt: Date.now(), form: { method } }); this.setState({ proof: false, payErr: '' }); this.flash('Payment submitted for confirmation'); return this.back(); }
-        this.setState({ paying: true, payErr: '' });
-        setTimeout(() => { const ref = (method === 'UPI' ? 'UPI ref ' : 'Bank ref ') + String(Date.now()).slice(-10); this.youDo('Payment made', method + ' · ' + ref + ' · awaiting confirmation', { paidAt: Date.now(), form: { method } }); this.setState({ paying: false }); this.flash('Payment sent · Mineral Bridge will confirm it'); this.back(); }, 1600);
+        if (method === 'Bitcoin') { const tx = (s.btcTx || '').trim(); if (!/^[0-9a-fA-Fx]{16,}$/.test(tx)) return this.setState({ payErr: 'Paste the transaction ID from your wallet (at least 16 characters)' }); }
+        else if (method === 'UPI' || method === 'Net banking') { if ((s.payRef || '').trim().length < 6) return this.setState({ payErr: 'Enter the ' + (method === 'UPI' ? 'UPI' : 'bank') + ' reference of your payment' }); }
+        else if (!s.uploads.proof.length) return this.setState({ payErr: 'Upload the payment receipt first' });
+        this.setState({ payErr: '' });
+        bg(this.remote.submitPay(method));
       },
       receipt: () => {
         if (!this.stepOpen()) return;
         const r = s.rc;
         if (!(parseFloat(r.qty) > 0)) return this.setState({ rcErr: 'Enter the quantity you received' });
-        if (r.photos < 1) return this.setState({ rcErr: 'Add at least one photo of the delivery' });
-        this.youDo('Receipt confirmed by you', r.qty + ' received · condition ' + r.cond.toLowerCase() + ' · ' + r.photos + (r.photos === 1 ? ' photo' : ' photos')); this.setState({ rcErr: '' }); this.flash('Delivery accepted'); this.back();
+        if (s.uploads.receipt.length < 1) return this.setState({ rcErr: 'Add at least one photo of the delivery' });
+        this.setState({ rcErr: '' });
+        bg(this.remote.confirmReceipt());
       },
       sellForm: () => this.submitSell(),
       editProfile: () => this.saveProfile(),
       bizType: () => this.saveBizType(),
       kycStatus: () => this.go('kyc'),
+      contactOtp: () => {
+        if (s.contactBusy) return;
+        if (!/^\d{4}$/.test(s.contactCode)) return this.setState({ contactErr: 'Enter all 4 digits' });
+        bg(this.remote.verifyContactChange(s.contactCode));
+      },
+      priceVar: () => this.decideVariation('accept'),
+      support: () => this.openSupport(''),
     };
     const fn = H[sc]; if (fn) fn();
   }
   secondary() {
     const s = this.state, sc = s.screen;
+    const bg = (p: Promise<unknown>) => { void this.task(p); };
     const H: Partial<Record<AppScreen, () => void>> = {
       placed: () => this.jump('cats'), sellDone: () => this.jump('home'),
       auctionWon: () => { this.setState({ stack: ['orders'], screen: 'auctions', atab: 'ended' }); this.top(); },
@@ -334,14 +385,16 @@ export class MBStore {
       report: () => {
         if (!this.stepOpen()) return;
         if (s.repNote.trim().length < 5) return this.setState({ repErr: 'Describe what needs clarifying' });
-        const o = this.order()!; this.patchOrder(o.id, c => this.log(c, 'You', 'Clarification requested', s.repNote.trim(), { hold: 'clarify' })); this.setState({ repNote: '', repErr: '' }); this.flash('Clarification sent'); this.back();
+        bg(this.remote.queryReports(s.repNote.trim()));
       },
       receipt: () => {
         if (!this.stepOpen()) return;
         if (s.rc.note.trim().length < 5) return this.setState({ rcErr: 'Describe the discrepancy in the note' });
-        const o = this.order()!; this.patchOrder(o.id, c => this.log(c, 'You', 'Discrepancy raised', s.rc.qty + ' received · ' + s.rc.cond.toLowerCase() + ' · ' + s.rc.note.trim(), { hold: 'discrepancy', disc: { qty: s.rc.qty, cond: s.rc.cond, note: s.rc.note.trim(), photos: s.rc.photos, at: Date.now() } })); this.notify(o, 'Discrepancy raised', o.id + ' · Mineral Bridge will review it within 1 working day'); this.flash('Discrepancy raised'); this.back();
+        if (!(parseFloat(s.rc.qty) > 0)) return this.setState({ rcErr: 'Enter the quantity you received' });
+        bg(this.remote.disputeReceipt());
       },
       sellForm: () => { this.setState({ hasDraft: true }); this.flash('Draft saved'); },
+      priceVar: () => this.decideVariation('reject'),
     };
     const fn = H[sc]; if (fn) fn();
   }
@@ -349,11 +402,12 @@ export class MBStore {
     const s = this.state, k = s.sheet, close = () => this.setState({ sheet: '' });
     const S: Record<string, [string, string, string, string, () => void]> = {
       kycPending: ['Verification still under review', 'Your KYC (' + ((s.user || { kycRef: '' }).kycRef || '') + ') is being reviewed. You can browse, but buying and selling open once it is approved.', 'View status', '#121214', () => { close(); this.go('kycStatus'); }],
-      declineQuote: ['Decline this quotation?', 'Mineral Bridge will be told and can send a revised quotation. Your order stays open.', 'Decline quotation', '#B42318', () => { close(); const o = this.order()!; this.patchOrder(o.id, c => this.log(c, 'You', 'Quotation declined', 'Declined by ' + s.user!.name, { hold: 'quoteDeclined' })); this.flash('Quotation declined'); this.back(); }],
+      declineQuote: ['Decline this quotation?', 'Mineral Bridge will be told and can send a revised quotation. Your order stays open.', 'Decline quotation', '#B42318', () => { close(); void this.task(this.remote.declineQuote()); }],
       needSeller: ['Add selling to your account', 'Your account is set up for buying only. Choose a seller type to sell to Mineral Bridge. Your draft is kept.', 'Add seller type', '#121214', () => { close(); this.setState(x => ({ reg: Object.assign({}, x.reg, { role: 'both' as const, buyerType: x.user!.buyerType || '', sellerType: '' }), regErr: '' })); this.go('bizType'); }],
       needBuyer: ['Add buying to your account', 'Your account is set up for selling only. Choose a buyer type to place orders. Your cart is kept.', 'Add buyer type', '#121214', () => { close(); this.setState(x => ({ reg: Object.assign({}, x.reg, { role: 'both' as const, buyerType: '', sellerType: x.user!.sellerType || '' }), regErr: '' })); this.go('bizType'); }],
-      logout: ['Log out?', 'You will need a verification code to sign in again.', 'Log out', '#B42318', () => { close(); this.jump('welcome', { user: null, returnTo: '' }); this.flash('Logged out'); }],
-      discardDraft: ['Discard this draft?', 'Photos and details you entered will be removed.', 'Discard draft', '#B42318', () => { close(); this.setState({ hasDraft: false, draft: emptyDraft() }); this.flash('Draft discarded'); }],
+      rejectVariation: ['Reject this price?', 'Mineral Bridge will be told and the order is paused while they review it with you. Your note is shared with them.', 'Reject price', '#B42318', () => { close(); void this.task(this.remote.decideVariation('reject', this.state.varNote)); }],
+      logout: ['Log out?', 'You will need a verification code to sign in again.', 'Log out', '#B42318', () => { close(); this.jump('welcome', { returnTo: '' }); void this.task(this.remote.logout()); }],
+      discardDraft: ['Discard this draft?', 'Photos and details you entered will be removed.', 'Discard draft', '#B42318', () => { close(); this.setState(x => ({ hasDraft: false, draft: emptyDraft(), uploads: { ...x.uploads, sellPhotos: [], sellDocs: [] } })); this.flash('Draft discarded'); }],
     };
     const v = S[k];
     if (!v) return { open: false as const, title: '', body: '', cta: '', bg: '', confirm: () => {} };
@@ -370,14 +424,13 @@ export class MBStore {
     if (!(qIn > 0)) return this.setState({ qtyErr: 'Enter a quantity' });
     if (q < p.min) return this.setState({ qtyErr: 'Minimum order is ' + nf(this.conv(p.min, p.unit, u)) + ' ' + u + (u !== p.unit ? ' (' + p.min + ' ' + p.unit + ')' : '') });
     if (q > p.avail) return this.setState({ qtyErr: 'Only ' + nf(this.conv(p.avail, p.unit, u)) + ' ' + u + ' available' + (u !== p.unit ? ' (' + p.avail + ' ' + p.unit + ')' : '') });
-    const had = s.cart.some(c => c.pid === p.id), item = { pid: p.id, qty: q, qIn, uIn: u };
-    this.setState(x => ({ qtyErr: '', cart: had ? x.cart.map(c => (c.pid === p.id ? item : c)) : [...x.cart, item] }));
-    this.flash(had ? 'Cart quantity updated' : 'Added to cart'); this.go('cart');
+    const had = s.cart.some(c => c.pid === p.id);
+    void this.task(this.remote.cartPut(p.id, qIn, u, q).then(ok => { if (!ok) return; this.flash(had ? 'Cart quantity updated' : 'Added to cart'); this.go('cart'); }));
   }
   prefillShip() {
     const s = this.state, u = s.user, last = s.orders.find(o => o.kind === 'buy' && o.addr);
     if (s.ship.street) return;
-    this.setState({ ship: last && last.addr ? Object.assign({}, last.addr) : { org: (u && u.business) || '', street: '', city: '', country: (u && u.country) || '', contact: (u && u.name) || '', mobile: (u && u.phone) || '' }, shipErr: {} });
+    this.setState({ ship: last && last.addr ? Object.assign({}, last.addr) : { org: (u && u.business !== 'Individual' && u.business) || '', street: '', city: '', country: (u && u.country) || '', contact: (u && u.name) || '', mobile: (u && u.phone) || '' }, shipErr: {} });
   }
   placeOrder() {
     const s = this.state;
@@ -386,18 +439,13 @@ export class MBStore {
     const e: Errs = {}, sh = s.ship as unknown as Record<string, string>;
     [['org', 'Company / receiver name'], ['street', 'Street address'], ['city', 'City'], ['country', 'Country'], ['contact', 'Contact person']].forEach(([k, l]) => { if (!String(sh[k] || '').trim()) e[k] = l + ' is required'; });
     if (String(sh.mobile || '').replace(/\D/g, '').length < 9) e.mobile = 'Mobile needs at least 9 digits';
+    if (!e.country && !resolveCountryCode(sh.country)) e.country = 'Enter the delivery country as a full country name';
     if (Object.keys(e).length) return this.err('shipErr', e);
-    const bad = s.cart.find(c => { const p = MB.product(c.pid); return !p || p.avail <= 0 || c.qty > p.avail; });
+    const bad = s.cart.find(c => { const p = MB.product(c.pid); return !!c.issue || (!!p && (p.avail <= 0 || c.qty > p.avail)); });
     if (bad) return this.flash('A cart item is no longer available in that quantity');
-    this.setState({ placing: true, shipErr: {} });
-    setTimeout(() => {
-      const n = 10419 + this.state.orders.filter(o => o.kind === 'buy').length;
-      const id = 'MB-ORD-26-' + n, now = Date.now();
-      const o: Order = { id, kind: 'buy', items: this.state.cart.map(c => Object.assign({}, c)), addr: Object.assign({}, s.ship), idx: 0, created: now, log: [{ who: 'You', text: 'Order placed', note: 'Order ' + id + ' submitted for review', at: now }] };
-      this.setState(x => ({ placing: false, cart: [], orders: [o, ...x.orders], oid: id, stack: [], screen: 'placed' }));
-      this.notify(o, 'Order placed', id + ' is under review by Mineral Bridge');
-      this.top();
-    }, 900);
+    if (!s.cart.length) return this.flash('Your cart is empty');
+    this.setState({ shipErr: {} });
+    void this.task(this.remote.placeOrder());
   }
   submitPayInsp() {
     if (!this.stepOpen()) return;
@@ -408,8 +456,7 @@ export class MBStore {
     if (!f.billAddr.trim()) e.billAddr = 'Billing address is required';
     if (!f.c1) e.c = 'Tick the confirmation';
     if (Object.keys(e).length) return this.err('pfErr', e);
-    this.youDo('Payment details submitted', f.method + ' · ' + f.terms, { form: { method: f.method, terms: f.terms } });
-    this.setState({ pfErr: {} }); this.flash('Details submitted for approval'); this.back();
+    void this.task(this.remote.submitBuyerForm());
   }
   submitSellConfirm() {
     if (!this.stepOpen()) return;
@@ -422,62 +469,101 @@ export class MBStore {
     if (!f.address.trim()) e.address = 'Inspection location is required';
     if (!f.c1) e.c = 'Tick the confirmation';
     if (Object.keys(e).length) return this.err('scErr', e);
-    this.youDo('Seller confirmation form submitted', f.method + ' · inspection and pickup ' + f.date + ' ' + f.time + ' at ' + f.address.trim(), { form: { method: f.method, date: f.date, time: f.time, address: f.address.trim() } });
-    this.setState({ scErr: {} }); this.flash('Form submitted for approval'); this.back();
+    void this.task(this.remote.submitSellerForm());
   }
   prefillForms(o: Order) {
-    const s = this.state, u = s.user || DEMO_USER, f = o.form || {};
-    if (!s.pf.billName) this.setState(x => ({ pf: Object.assign({}, x.pf, { billName: u.business, billAddr: o.addr ? o.addr.street + ', ' + o.addr.city : '', address: f.address || '', contact: u.name, mobile: u.phone || '' }) }));
-    if (!s.sc.address) this.setState(x => ({ sc: Object.assign({}, x.sc, { address: 'Ilesha Lease Site 4, Osun, Nigeria' }) }));
+    const s = this.state, u = s.user || EMPTY_USER, f = o.form || {};
+    if (!s.pf.billName) this.setState(x => ({ pf: Object.assign({}, x.pf, { billName: u.business === 'Individual' ? u.name : u.business, billAddr: o.addr ? o.addr.street + ', ' + o.addr.city : '', address: f.address || '', contact: u.name, mobile: u.phone || '' }) }));
   }
   submitSell() {
     const s = this.state, d = s.draft, e: Errs = {};
+    if (s.placing) return;
     if (!d.mineral) e.mineral = 'Choose a mineral';
-    if (d.photos < 3) e.photos = 'Add at least 3 photos (' + d.photos + ' added)';
+    if (s.uploads.sellPhotos.length < 3) e.photos = 'Add at least 3 photos (' + s.uploads.sellPhotos.length + ' added)';
     if (!(parseFloat(d.qty) > 0)) e.qty = 'Enter the quantity';
     if (!d.grade.trim()) e.grade = 'Enter the quality or grade';
     if (d.details.trim().length < 10) e.details = 'Describe the mineral in a sentence or two';
     if (Object.keys(e).length) return this.err('draftErr', e);
     if (!this.gate('sellForm')) { this.setState({ hasDraft: true }); return; }
-    const n = 90414 + s.orders.filter(o => o.kind === 'sell').length, id = 'MB-SELL-26-' + n, now = Date.now();
-    const refP = MB.PRODUCTS.filter(p => p.mineral === d.mineral && p.unit === d.unit);
-    const o: Order = { id, kind: 'sell', idx: 0, created: now, items: [], sell: { mineral: d.mineral, name: MB.mineralName(d.mineral), qty: parseFloat(d.qty), unit: d.unit, grade: d.grade.trim(), form: d.form, details: d.details.trim(), photos: d.photos, docs: d.docs, ref: refP.length ? refP[0].ref * 0.94 : 1000 }, log: [{ who: 'You', text: 'Sell request submitted', note: d.photos + ' photos · ' + d.qty + ' ' + d.unit + ' · ' + d.docs.length + ' documents', at: now }] };
-    this.setState(x => ({ orders: [o, ...x.orders], oid: id, hasDraft: false, draftErr: {}, draft: emptyDraft(), stack: [], screen: 'sellDone' }));
-    this.notify(o, 'Sell request submitted', id + ' is with our operations team for review'); this.top();
+    void this.task(this.remote.submitSell());
   }
   saveProfile() {
     const s = this.state, f = s.edit || { name: '', business: '', email: '', phone: '', country: '' }, e: Errs = {};
     if ((f.name || '').trim().length < 2) e.name = 'Enter your full name';
     if ((f.business || '').trim().length < 2 && this.bizDocNeeded()) e.business = 'Enter your business name';
-    if (f.email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(f.email.trim())) e.email = 'Enter a valid email';
-    if (f.phone && f.phone.replace(/\D/g, '').length < 9) e.phone = 'Phone numbers need at least 9 digits';
-    if (!f.email && !f.phone) e.phone = 'Keep at least one contact method';
+    // Phone and email are not part of PATCH /me: they change only through startContactChange (OTP-verified).
+    if (f.country && f.country.trim() && !resolveCountryCode(f.country)) e.country = 'Enter a full country name';
     if (Object.keys(e).length) return this.err('editErr', e);
-    this.setState(x => ({ user: Object.assign({}, x.user!, { name: f.name.trim(), business: f.business.trim(), email: (f.email || '').trim(), phone: (f.phone || '').trim(), country: (f.country || '').trim() }), editErr: {} }));
-    this.flash('Profile saved'); this.back();
+    void this.task(this.remote.saveProfile(f));
   }
   saveBizType() {
     const r = this.state.reg;
     if (!r.role) return this.setState({ regErr: 'Choose buyer, seller or both' });
     if (r.role !== 'seller' && !r.buyerType) return this.setState({ regErr: 'Choose your buyer type' });
     if (r.role !== 'buyer' && !r.sellerType) return this.setState({ regErr: 'Choose your seller type' });
-    this.setState(x => ({ regErr: '', user: Object.assign({}, x.user!, { role: r.role, buyerType: r.role !== 'seller' ? r.buyerType : '', sellerType: r.role !== 'buyer' ? r.sellerType : '' }) }));
-    this.flash('Account type updated');
-    const ret = this.state.returnTo;
-    if (ret) { this.setState({ returnTo: '' }); this.back(); if (ret === 'checkout') { this.prefillShip(); this.go('checkout'); } } else this.back();
+    void this.task(this.remote.saveBizType());
+  }
+
+  /** Start a phone/email change: validates the new value, then asks the server to send a code to it. */
+  startContactChange(field: 'phone' | 'email', channel: OtpChannel, raw: string) {
+    const s = this.state, u = s.user;
+    if (s.contactBusy) return;
+    const v = raw.trim();
+    if (field === 'email') {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v)) return this.err('editErr', { email: 'Enter a valid email address' });
+      if (u && v.toLowerCase() === (u.email || '').toLowerCase()) return this.err('editErr', { email: 'That is already your email' });
+    } else {
+      const id = contactIdentifier(channel, v, s.auth.cc);
+      const n = id.replace(/\D/g, '').length;
+      if (n < 9 || n > 15) return this.err('editErr', { phone: 'Enter a valid number (9–15 digits, with the country code if it is not ' + (s.auth.cc || '+234') + ')' });
+      if (u && id === u.phone) return this.err('editErr', { phone: 'That is already your number' });
+    }
+    this.setState({ editErr: {} });
+    void this.task(this.remote.startContactChange(channel, contactIdentifier(channel, v, s.auth.cc)));
+  }
+
+  // ---- Price variation (sell orders)
+  varMeta(): Partial<Meta> {
+    const pv = pendingVariation(this.order());
+    return { header: 1, canBack: 1, title: 'Price update', cta: pv ? (this.state.varBusy ? 'Submitting…' : 'Accept new price') : '', cta2: pv ? 'Reject new price' : '', cta2Fg: '#B42318' };
+  }
+  decideVariation(decision: 'accept' | 'reject') {
+    const s = this.state, o = this.order();
+    if (s.varBusy) return;
+    if (!o || !pendingVariation(o)) return this.flash('There is no price update waiting for your answer');
+    this.setState({ varErr: '' });
+    if (decision === 'reject') return this.setState({ sheet: 'rejectVariation' });
+    void this.task(this.remote.decideVariation('accept', s.varNote));
+  }
+
+  // ---- Support inbox
+  openSupport(ref: string) { this.go('supportThread', { supRef: ref, supThread: null, supMsg: '', supErr: '' }); }
+  sendSupport() {
+    const s = this.state, t = s.supMsg.trim();
+    if (s.supBusy) return;
+    if (!t) return;
+    void this.task(s.supRef ? this.remote.sendSupportMessage(s.supRef, t) : this.remote.createSupportThread(t));
+  }
+
+  // ---- Catalogue documents
+  /** Open a lot document from the API (signed URL). Falls back to the on-device document view when the lot has none. */
+  openProductDoc(p: Product, type: ProductDocumentType, t: string, download = false) {
+    void this.task(this.remote.openProductDocument(p.id, type).then(ok => { if (ok === false) { if (download) this.downloadDoc({ t, pid: p.id }); else this.openDoc({ t, pid: p.id }); } }));
   }
 
   // ---- KYC
   saveKycFile(file: { uri: string; fileName?: string; fileSize?: number; type?: string }) {
     const id = this.state.kycDocId, sz = file.fileSize || 0;
-    const size = sz > 1048576 ? (sz / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(sz / 1024)) + ' KB';
     if (sz > 10 * 1048576) return this.setState({ kycDocErr: 'File is larger than 10 MB. Choose a smaller file.' });
     const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.fileName || '');
     if (!isPdf && file.type && !/^image\//.test(file.type)) return this.setState({ kycDocErr: 'Use a JPG, PNG or PDF file.' });
     if (isPdf && id === 'selfie') return this.setState({ kycDocErr: 'A selfie must be a photo.' });
-    const rec: KycFile = { kind: isPdf ? 'pdf' : 'img', src: isPdf ? '' : file.uri, name: file.fileName || (id + (isPdf ? '.pdf' : '.jpg')), size, at: Date.now() };
-    this.setState(x => ({ kycDocErr: '', kyc: Object.assign({}, x.kyc, { [id]: rec }) }));
+    const rec: KycFile = { kind: isPdf ? 'pdf' : 'img', src: isPdf ? '' : file.uri, name: file.fileName || (id + (isPdf ? '.pdf' : '.jpg')), size: fmtBytes(sz), at: Date.now() };
+    void this.task(this.remote.uploadKycDoc(id, file, rec));
   }
+  removeKycFile(id: KycDocId) { void this.task(this.remote.removeKycDoc(id)); }
+  setIdType(label: string) { void this.task(this.remote.setKycIdType(label)); }
+  setConsent(v: boolean) { void this.task(this.remote.setKycConsent(v)); }
   nextKycDoc() {
     const s = this.state, k = s.kyc;
     const ids = (['front', 'back', 'selfie', 'address', 'biz'] as KycDocId[]).filter(id => (id !== 'back' || k.idType !== 'Passport') && (id !== 'biz' || this.bizDocNeeded()));
@@ -495,7 +581,8 @@ export class MBStore {
   // ---- Auctions
   aucOf(id?: string) { return (this.state.auctions || []).find(a => a.id === (id || this.state.aid)); }
   aucCur(a: Auction) { return a.bids.length ? a.bids[a.bids.length - 1].amt : a.start; }
-  aucMin(a: Auction) { return a.bids.length ? this.aucCur(a) + 500 : a.start; }
+  aucInc(a: Auction) { return a.inc && a.inc > 0 ? a.inc : 500; }
+  aucMin(a: Auction) { if (a.minNext && a.minNext > 0) return a.minNext; return a.bids.length ? this.aucCur(a) + this.aucInc(a) : a.start; }
   patchAuc(id: string, fn: (a: Auction) => Auction) { this.setState(x => ({ auctions: x.auctions.map(a => (a.id === id ? fn(JSON.parse(JSON.stringify(a))) : a)) })); }
   left(ms: number) { if (ms <= 0) return '00:00:00'; const h = Math.floor(ms / 36e5), mi = Math.floor(ms % 36e5 / 6e4), se = Math.floor(ms % 6e4 / 1e3), p = (n: number) => String(n).padStart(2, '0'); return h >= 24 ? Math.floor(h / 24) + 'd ' + p(h % 24) + 'h' : p(h) + ':' + p(mi) + ':' + p(se); }
   aucCta(): Partial<Meta> {
@@ -508,61 +595,49 @@ export class MBStore {
   openAuction(id: string) { const a = this.aucOf(id); this.go('auction', { aid: id, bidAmt: a ? String(this.aucMin(a)) : '', bidErr: '', autoOn: false, autoMax: '' }); }
   auctionPrimary() {
     const s = this.state, a = this.aucOf(); if (!a) return;
-    if (a.status === 'upcoming') { const on = !s.reminders[a.id]; this.setState(x => ({ reminders: Object.assign({}, x.reminders, { [a.id]: on }) })); return this.flash(on ? 'We will message you when bidding opens' : 'Reminder cancelled'); }
+    if (a.status === 'upcoming') { if (!this.gate('auction')) return; void this.task(this.remote.toggleReminder(a, !s.reminders[a.id])); return; }
     if (a.status === 'ended') {
       if (a.result === 'won') return this.aucUnpaid(a) ? this.auctionToOrder(a.id, true) : this.go('order', { oid: a.orderId });
       const p = MB.product(a.pid);
       return this.jump('lots', { mineral: p ? p.mineral : 'gold', fform: 'All', labOnly: false, search: '' });
     }
     if (!this.gate('auction')) return;
-    const amt = Math.round(parseFloat(String(s.bidAmt).replace(/[^\d.]/g, ''))), min = this.aucMin(a);
+    const amt = Math.round(parseFloat(String(s.bidAmt).replace(/[^\d.]/g, ''))), min = this.aucMin(a), inc = this.aucInc(a);
     if (!(amt > 0)) return this.setState({ bidErr: 'Enter your bid amount' });
     if (amt < min) return this.setState({ bidErr: 'Minimum bid is ' + MB.money(min) });
-    if (amt % 500) return this.setState({ bidErr: 'Bids go up in steps of $500' });
+    if (amt % inc) return this.setState({ bidErr: 'Bids go up in steps of ' + MB.money(inc) });
     let max = 0;
     if (s.autoOn) { max = Math.round(parseFloat(String(s.autoMax).replace(/[^\d.]/g, ''))); if (!(max >= amt)) { max = 0; this.setState({ autoOn: false, autoMax: '' }); setTimeout(() => this.flash('Bid placed · auto-bid turned off because its limit was below this bid'), 0); } }
-    this.patchAuc(a.id, c => { c.bids.push({ who: 'You', amt, at: Date.now() }); c.autoMax = max || 0; c.outbid = false; return c; });
-    this.setState({ bidErr: '', bidAmt: String(amt + 500) }); this.flash('Bid placed · you are the highest bidder');
+    void this.task(this.remote.placeBid(a, amt, max));
   }
+  /** DEVELOPMENT ONLY: a fake competing bid for UI testing. Never sent to the server. */
   simOutbid() {
+    if (!__DEV__) return;
     const a = this.aucOf(); if (!a || a.status !== 'live') return;
-    const other = this.aucCur(a) + 500 * (1 + Math.floor(Math.random() * 3));
+    const other = this.aucCur(a) + this.aucInc(a) * (1 + Math.floor(Math.random() * 3));
     this.patchAuc(a.id, c => {
       c.bids.push({ who: 'Bidder ' + (1000 + Math.floor(Math.random() * 9000)), amt: other, at: Date.now() });
-      const mine = c.bids.some(b => b.who === 'You');
-      if (mine && c.autoMax && c.autoMax >= other + 500) { c.bids.push({ who: 'You', amt: other + 500, at: Date.now() + 1, auto: true }); c.outbid = false; } else if (mine) c.outbid = true;
+      if (c.mine) { c.outbid = true; c.leading = false; }
       return c;
     });
-    setTimeout(() => {
-      const n = this.aucOf(a.id)!; const last = n.bids[n.bids.length - 1];
-      this.setState({ bidAmt: String(this.aucMin(n)) });
-      if (last.who === 'You') this.flash('Auto-bid raised your bid to ' + MB.money(last.amt));
-      else if (n.outbid) { this.flash('You have been outbid'); this.setState(x => ({ notifs: [{ id: 'n' + Date.now(), title: 'You have been outbid', note: a.id + ' · current bid ' + MB.money(last.amt), at: Date.now(), read: false }, ...x.notifs] })); }
-    }, 0);
+    this.setState({ bidAmt: String(this.aucMin(this.aucOf(a.id)!)) });
   }
+  /** DEVELOPMENT ONLY: end the auction locally. The server decides real outcomes. */
   endAuction(id: string, silent?: boolean) {
+    if (!__DEV__) return;
     const a = this.aucOf(id); if (!a || a.status !== 'live') return;
     const last = a.bids[a.bids.length - 1], won = !!last && last.who === 'You', mine = a.bids.some(b => b.who === 'You');
     this.patchAuc(a.id, c => { c.status = 'ended'; c.endsAt = Math.min(c.endsAt, Date.now()); c.result = won ? 'won' : mine ? 'lost' : 'closed'; c.outbid = false; return c; });
-    if (won) { this.setState(x => ({ notifs: [{ id: 'n' + Date.now(), title: 'You won ' + a.id, note: 'Winning bid ' + MB.money(last.amt) + ' · sign the e-contract to continue', at: Date.now(), read: false }, ...x.notifs] })); if (this.state.screen === 'auction' && this.state.aid === id) this.go('auctionWon'); } else if (!silent || mine) this.flash(mine ? 'Auction ended · another bidder won' : 'Auction ended');
+    if (won) { if (this.state.screen === 'auction' && this.state.aid === id) this.go('auctionWon'); } else if (!silent || mine) this.flash(mine ? 'Auction ended · another bidder won' : 'Auction ended');
   }
   aucUnpaid(a?: Auction) { if (!a || a.result !== 'won') return false; const o = a.orderId && this.state.orders.find(x => x.id === a.orderId); if (!o) return true; return o.idx < MB.stages('buy').findIndex(x => x.key === 'paid') && !o.rejected; }
   aucWonCta() { const a = this.aucOf(); return a && this.aucUnpaid(a) ? 'Pay now · ' + MB.money(this.aucCur(a)) : 'Track order'; }
   auctionToOrder(id: string, toPay: boolean) {
-    const s = this.state, a = this.aucOf(id); if (!a || a.result !== 'won') return;
+    const a = this.aucOf(id); if (!a || a.result !== 'won') return;
     if (a.orderId) { if (toPay && this.aucUnpaid(a)) { this.setState({ stack: ['orders', 'order'], screen: 'pay', oid: a.orderId, payErr: '' }); this.top(); return; } return this.go('order', { oid: a.orderId }); }
-    const st = MB.stages('buy'), ci = st.findIndex(x => x.key === 'contractMb'), now = Date.now(), total = this.aucCur(a);
-    const n = 10419 + s.orders.filter(o => o.kind === 'buy').length, oid = 'MB-ORD-26-' + n, u = s.user || DEMO_USER;
-    const last = s.orders.find(o => o.kind === 'buy' && o.addr);
-    const addr = last && last.addr ? Object.assign({}, last.addr) : { org: u.business, street: '', city: '', country: u.country || '', contact: u.name, mobile: u.phone || '' };
-    const o: Order = {
-      id: oid, kind: 'buy', items: [{ pid: a.pid, qty: a.qty }], addr, idx: ci, created: now, auction: a.id, quote: { no: 'AUC-' + a.id, total, issued: now, valid: now + 7 * 864e5 },
-      log: [{ who: 'You', text: 'Won at auction ' + a.id, note: 'Winning bid ' + MB.money(total), at: now }, { who: MB.WHO.mb, text: 'Price confirmed by Mineral Bridge', note: 'Auction result ' + MB.money(total) + ' accepted as the contract price.', at: now + 1 }, { who: MB.WHO.mb, text: 'Auction terms accepted as the e-contract', note: 'The bidding terms you accepted apply as the signed contract. Pay to release the lot for dispatch.', at: now + 2 }],
-    };
-    this.setState(x => ({ orders: [o, ...x.orders], auctions: x.auctions.map(y => (y.id === a.id ? Object.assign({}, y, { orderId: oid }) : y)), stack: toPay ? ['orders', 'order'] : ['orders'], screen: toPay ? 'pay' : 'order', oid, payErr: '' }));
-    this.notify(o, 'Order created from auction', oid + ' · pay the winning bid to release the lot'); this.top();
+    void this.task(this.remote.auctionToOrder(a, toPay));
   }
-  myAucs() { const s = this.state; return (s.auctions || []).filter(a => a.bids.some(b => b.who === 'You') || s.reminders[a.id]).sort((a, b) => (Number(b.result === 'won') - Number(a.result === 'won')) || (Number(b.status === 'live') - Number(a.status === 'live'))); }
+  myAucs() { const s = this.state; return (s.auctions || []).filter(a => a.mine || a.bids.some(b => b.who === 'You') || s.reminders[a.id]).sort((a, b) => (Number(b.result === 'won') - Number(a.result === 'won')) || (Number(b.status === 'live') - Number(a.status === 'live'))); }
 
   // ---- Refunds & cancellation
   refundable(o?: Order) {
@@ -573,24 +648,28 @@ export class MBStore {
     if (o.refund && o.refund.status === 'refunded' && o.refund.type === 'full') return false;
     return !o.hold || o.hold === 'discrepancy';
   }
-  chatSay(o: Order, mine: string, reply: string, action?: string, ctx?: string) {
+  /** A client-side helper exchange in the chat (guidance toward the refund form). Never sent to the server. */
+  chatSay(o: Order, mine: string, reply: string, action?: string, ctx?: string, echo = true) {
     const now = Date.now();
-    this.setState(x => ({ msg: '', chat: Object.assign({}, x.chat, { [o.id]: [...(x.chat[o.id] || []), { me: true, text: mine, at: now }] }) }));
-    setTimeout(() => this.setState(x => ({ chat: Object.assign({}, x.chat, { [o.id]: [...(x.chat[o.id] || []), { me: false, text: reply, at: Date.now(), action: action || '', ctx: ctx || '' }] }) })), 700);
+    this.setState(x => ({ msg: '', chat: Object.assign({}, x.chat, { [o.id]: [...(x.chat[o.id] || []), ...(echo ? [{ me: true, text: mine, at: now, local: true }] : []), { me: false, text: reply, at: now + 1, action: action || '', ctx: ctx || '', local: true }] }) }));
   }
-  chatRefund(o: Order, disc?: boolean, typed?: string) {
+  chatRefund(o: Order, disc?: boolean, typed?: string, echo = true) {
     const mine = typed || (disc ? 'I would like a refund for the difference in my delivery.' : 'I would like to request a refund for ' + o.id + '.');
     if (!this.refundable(o)) {
       const st = MB.stages('buy'), pi = st.findIndex(x => x.key === 'paid');
       const inProg = !!o.refund && !['declined', 'refunded'].includes(o.refund.status);
       const why = o.kind !== 'buy' ? 'Sell requests are paid to you, so there is nothing to refund. If a payment to you is wrong, tell us here and we will check it.' : o.idx < pi ? 'Nothing has been paid on ' + o.id + ' yet, so there is nothing to refund. You can decline the quotation or cancel before paying.' : inProg ? 'Refund ' + o.refund!.ref + ' is already in progress. I will update you here.' : !MB.stages('buy')[o.idx + 1] ? o.id + ' is completed, so refunds are closed. If something is wrong, describe it here and our team will review it.' : 'A refund cannot be requested on ' + o.id + ' at this stage. Our team will help you here.';
-      return this.chatSay(o, mine, why, inProg ? 'trackRefund' : '');
+      return this.chatSay(o, mine, why, inProg ? 'trackRefund' : '', undefined, echo);
     }
     const paid = (o.quote ? o.quote.total : 0) - (o.refundedSoFar || 0);
-    this.chatSay(o, mine, 'You can request ' + (disc ? 'a partial refund for the missing or damaged quantity' : 'a full or partial refund of up to ' + MB.money(paid)) + ' on ' + o.id + '. Fill in the refund form and we will review it within 2 working days. The order is paused while we review.', 'refund', disc ? 'Delivery discrepancy: ' + ((o.disc || { note: '' }).note || '') : (typed || ''));
+    this.chatSay(o, mine, 'You can request ' + (disc ? 'a partial refund for the missing or damaged quantity' : 'a full or partial refund of up to ' + MB.money(paid)) + ' on ' + o.id + '. Fill in the refund form and we will review it within 2 working days. The order is paused while we review.', 'refund', disc ? 'Delivery discrepancy: ' + ((o.disc || { note: '' }).note || '') : (typed || ''), echo);
   }
+  /** Send a typed message to Mineral Bridge on the order chat. */
+  sendChat(o: Order, text: string) { void this.task(this.remote.sendChat(o, text)); }
   cancelInfo(o?: Order): { mode: 'none' | 'free' | 'refund' } {
     if (!o || o.rejected || o.cancelled || this.view(o).done) return { mode: 'none' };
+    const srv = this.state.om[o.id]?.cancelInfo;
+    if (srv && srv.mode) return { mode: srv.mode };
     const st = MB.stages(o.kind), at = (k: string) => st.findIndex(x => x.key === k);
     if (o.hold && !['changes', 'quoteDeclined', 'clarify'].includes(o.hold)) return { mode: 'none' };
     if (o.kind === 'sell') return o.idx < at('schedule') ? { mode: 'free' } : { mode: 'none' };
@@ -618,14 +697,10 @@ export class MBStore {
     if (ci.mode === 'refund') {
       const rr = REFUND_REASONS.find(x => /longer|cancel/i.test(x)) || REFUND_REASONS[REFUND_REASONS.length - 1];
       this.openRefund(o, { reason: rr, note: 'Cancel before dispatch · ' + why, type: 'full' });
-      this.setState(x => ({ stack: x.stack.filter(k => k !== 'cancel') }));
+      this.setState(x => ({ stack: x.stack.filter(k => k !== 'cancel'), cancelRefund: o.id }));
       return this.flash('Your order is cancelled once the full refund is approved');
     }
-    const now = Date.now(), sell = o.kind === 'sell';
-    this.patchOrder(o.id, x => this.log(x, 'You', sell ? 'Sell request cancelled by you' : 'Order cancelled by you', why, { cancelled: { reason: c.reason, note: (c.note || '').trim(), at: now }, hold: '' }));
-    this.notify(o, sell ? 'Sell request cancelled' : 'Order cancelled', o.id + ' · ' + c.reason);
-    this.setState({ cx: { reason: '', note: '', agree: false }, cxErr: '' });
-    this.flash(sell ? 'Sell request cancelled' : 'Order cancelled'); this.back();
+    void this.task(this.remote.cancelOrder(c.reason, (c.note || '').trim()));
   }
   openRefund(o?: Order, pre?: Partial<AppState['rf']>) {
     if (!o) return;
@@ -633,7 +708,7 @@ export class MBStore {
       const st = MB.stages('buy'), pi = st.findIndex(x => x.key === 'paid');
       return this.flash(o.kind !== 'buy' ? 'Sell requests are paid to you, so they cannot be refunded' : o.idx < pi ? 'Nothing has been paid on ' + o.id + ' yet' : o.refund && !['declined', 'refunded'].includes(o.refund.status) ? 'Refund ' + o.refund.ref + ' is already in progress' : 'A refund cannot be requested on ' + o.id + ' now');
     }
-    this.setState({ oid: o.id, rfErr: '', rf: Object.assign(emptyRefund(), pre || {}), rfFieldErr: {} });
+    this.setState({ oid: o.id, rfErr: '', rf: Object.assign(emptyRefund(), pre || {}), rfFieldErr: {}, cancelRefund: '' });
     this.go('refund', { oid: o.id });
   }
   submitRefund() {
@@ -642,57 +717,60 @@ export class MBStore {
     const paid = (o.quote ? o.quote.total : 0) - (o.refundedSoFar || 0);
     if (!r.reason) return this.setState({ rfErr: 'Choose a reason' });
     if (r.note.trim().length < 10) return this.setState({ rfErr: 'Describe what happened in at least 10 characters' });
-    let amount = paid;
-    if (r.type === 'partial') { amount = parseFloat(String(r.amount).replace(/[^\d.]/g, '')); if (!(amount > 0)) return this.setState({ rfErr: 'Enter the amount to refund' }); if (amount >= paid) return this.setState({ rfErr: 'A partial refund must be less than ' + MB.money(paid) + '. Choose full refund instead.' }); }
+    if (r.type === 'partial') { const amount = parseFloat(String(r.amount).replace(/[^\d.]/g, '')); if (!(amount > 0)) return this.setState({ rfErr: 'Enter the amount to refund' }); if (paid > 0 && amount >= paid) return this.setState({ rfErr: 'A partial refund must be less than ' + MB.money(paid) + '. Choose full refund instead.' }); }
     const fe: Errs = {}, v = (k: keyof typeof r) => String(r[k] || '').trim();
     if (r.dest === 'bank') { if (v('holder').length < 2) fe.holder = 'Enter the account holder name'; if (v('bank').length < 2) fe.bank = 'Enter the bank name'; if (!/^\d{6,18}$/.test(v('account').replace(/\s/g, ''))) fe.account = 'Enter a 6–18 digit account number'; if (v('account2').replace(/\s/g, '') !== v('account').replace(/\s/g, '')) fe.account2 = 'Account numbers do not match'; if (!/^[A-Za-z0-9]{6,11}$/.test(v('code'))) fe.code = 'Enter a valid IFSC (11), SWIFT (8 or 11) or sort code'; if (v('country').length < 2) fe.country = 'Enter the bank country'; }
     if (r.dest === 'upi') { if (!/^[\w.-]{2,}@[A-Za-z]{2,}$/.test(v('upi'))) fe.upi = 'Enter a valid UPI ID, like name@bank'; if (v('upiName').length < 2) fe.upiName = 'Enter the name on the UPI account'; }
     if (r.dest === 'btc') { if (!/^(bc1|[13])[a-zA-HJ-NP-Z0-9]{25,62}$/.test(v('addr'))) fe.addr = 'Enter a valid Bitcoin address (starts with bc1, 1 or 3)'; if (v('addr2') !== v('addr')) fe.addr2 = 'Addresses do not match'; }
     if (Object.keys(fe).length) return this.setState({ rfFieldErr: fe, rfErr: 'Check the ' + ({ bank: 'bank account', upi: 'UPI', btc: 'wallet', original: '' }[r.dest]) + ' details' });
     if (!r.agree) return this.setState({ rfErr: 'Tick the confirmation to submit' });
-    const method = (o.form || {}).method || 'Bank transfer', to = r.dest === 'bank' ? r.bank.trim() + ' ••' + String(r.account).replace(/\s/g, '').slice(-4) + ' (' + r.holder.trim() + ')' : r.dest === 'upi' ? 'UPI ' + r.upi.trim() : r.dest === 'btc' ? 'BTC wallet ' + r.addr.trim().slice(0, 6) + '…' + r.addr.trim().slice(-4) : 'original ' + method;
-    const ref = 'MB-RF-26-' + String(Date.now()).slice(-5), now = Date.now();
-    this.patchOrder(o.id, c => this.log(c, 'You', 'Refund requested', (r.type === 'full' ? 'Full refund ' : 'Partial refund ') + MB.money(amount) + ' · ' + r.reason + ' · ' + r.note.trim(), { hold: 'refund', history: [...(c.history || []), ...(c.refund ? [c.refund] : [])], refund: { fromDisc: c.hold === 'discrepancy', ref, amount, type: r.type, reason: r.reason, note: r.note.trim(), to, files: r.files, status: 'requested', at: now } }));
-    this.notify(o, 'Refund requested', ref + ' · ' + MB.money(amount));
-    this.setState({ rfErr: '', rf: emptyRefund(), rfFieldErr: {} });
-    this.flash('Refund request submitted · ' + ref); this.back();
+    this.setState({ rfErr: '', rfFieldErr: {} });
+    void this.task(this.remote.createRefund(o));
   }
 
   // ---- Documents
   openDoc(spec: DocSpec) { this.go('doc', { doc: spec }); }
+
+  /** Map a rendered API document (`GET /documents/:number`) into the screen shape. */
+  apiDocData(j: Record<string, unknown>, num: string): DocData {
+    const val = (v: unknown): string => {
+      if (v == null || v === '') return '—';
+      if (typeof v === 'object') { const m = v as { amountMinor?: number; amount?: number; currency?: string }; if (m.amountMinor != null || (m.amount != null && m.currency)) return MB.money(moneyMajor(m as never)); return JSON.stringify(v); }
+      return String(v);
+    };
+    const rec = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' ? (v as Record<string, unknown>) : {});
+    const parties: [string, string][] = Object.entries(rec(j.parties)).filter(([k, v]) => v != null && v !== '' && k !== 'userId').map(([k, v]) => [k.replace(/([A-Z])/g, ' $1').toUpperCase(), val(v)]);
+    const secs = Array.isArray(j.sections) ? (j.sections as { heading?: string; rows?: { label?: string; value?: unknown }[] }[]) : [];
+    const issued = j.issuedAt ? Date.parse(String(j.issuedAt)) : NaN;
+    return {
+      title: String(j.title || 'Document'), no: String(j.number || num), date: Number.isFinite(issued) ? MB.fmt(issued) : '—', status: String(j.status || '').toUpperCase(),
+      issuer: 'MINERAL BRIDGE LTD', signer: 'Mineral Bridge Operations', signerRole: 'AUTHORISED SIGNATORY', note: '', parties,
+      sections: secs.map(sec => ({ h: String(sec.heading || '').toUpperCase(), rows: (sec.rows || []).map(r => ({ k: String(r.label || ''), v: val(r.value), w: 500 as const, mono: false })) })),
+    };
+  }
+
   docData(spec?: DocSpec): DocData {
-    const s = this.state, u = s.user || DEMO_USER, sp: DocSpec = spec || { t: '' };
+    const s = this.state, u = s.user || EMPTY_USER, sp: DocSpec = spec || { t: '' };
+    if (sp.num && s.docs[sp.num]) return s.docs[sp.num];
     const o = sp.oid ? s.orders.find(x => x.id === sp.oid) : undefined, p = sp.pid ? MB.product(sp.pid) : undefined;
     const R = (k: string, v: unknown, strong?: boolean) => ({ k, v: String(v == null || v === '' ? '—' : v), w: (strong ? 700 : 500) as 500 | 700, mono: !!strong });
     const items = o && o.kind === 'buy' ? o.items.map(it => [MB.product(it.pid) || ({} as Product), it] as const) : [];
-    const total = o && o.quote ? o.quote.total : 0, prod = o && o.auction ? total : Math.max(0, (total - 4200) / 1.012);
+    const lines = o ? (o.kind === 'sell' && o.sell ? [R(o.sell.name, o.sell.qty + ' ' + o.sell.unit + (o.sell.grade ? ' · ' + o.sell.grade : ''))] : items.map(([x, it]) => R((it.name || x.name || it.pid), (it.uIn && it.uIn !== MB.unitOfItem(it) ? it.qIn + ' ' + it.uIn : it.qty + ' ' + MB.unitOfItem(it)) + (x.lab ? ' · ' + x.grade : '')))) : [];
     const pp: [string, string][] = o && o.kind === 'sell' ? [['SELLER', u.name + ' · ' + u.business], ['BUYER', 'Mineral Bridge Ltd']] : [['BUYER', u.name + ' · ' + u.business], ['SELLER', 'Mineral Bridge Ltd']];
-    const at = (re: RegExp) => { const l = o && o.log.find(x => re.test(x.text)); return MB.fmt(l ? l.at : Date.now()); };
-    const lines = o ? (o.kind === 'sell' && o.sell ? [R(o.sell.name, o.sell.qty + ' ' + o.sell.unit + ' · ' + o.sell.grade)] : items.map(([x, it]) => R(x.name + ' · ' + x.id, (it.uIn && it.uIn !== x.unit ? it.qIn + ' ' + it.uIn : it.qty + ' ' + x.unit) + (x.lab ? ' · ' + x.grade : '')))) : [];
-    const ship: Partial<NonNullable<Order['ship']>> = (o && o.ship) || {};
     type D = Partial<DocData> & Pick<DocData, 'title' | 'no' | 'date' | 'status' | 'parties' | 'sections'>;
+    // Only documents that are built from real order/product fields live here. Everything issued by the platform
+    // (quotation, e-contract, receipts, invoices, reports, PODs...) is rendered by the API (`sp.num`).
     const D: Record<string, () => D> = {
-      quote: () => ({ title: 'Price quotation', no: o!.quote!.no + (o!.quote!.rev ? '-R' + o!.quote!.rev : ''), date: MB.fmt(o!.quote!.issued), status: 'VALID', parties: pp, sections: [{ h: 'ITEMS', rows: lines }, { h: 'PRICE', rows: o!.kind === 'sell' ? [R('Agreed price, full quantity', MB.money(total), true)] : [R('Product', MB.money(prod)), R('Verification & escrow fee (1.2%)', MB.money(prod * 0.012)), R('Insured transport', MB.money(4200)), R('Total', MB.money(total), true)] }, { h: 'TERMS', rows: [R('Valid until', MB.fmt(o!.quote!.valid)), R('Order', o!.id)] }], note: 'Prices are fixed once both parties sign the e-contract.' }),
-      contract: () => ({ title: o!.auction ? 'Auction sale contract' : 'E-contract', no: 'EC-' + o!.id.slice(-5), date: at(/countersigned|accepted as the e-contract/), status: 'SIGNED', parties: pp, sections: [{ h: 'SUBJECT', rows: lines.concat([R('Price', MB.money(total), true)]) }, { h: 'CLAUSES', rows: [R('Payment', o!.kind === 'sell' ? 'Released after inspection approval' : 'Due before dispatch'), R('Quality', o!.kind === 'sell' ? 'Mineral Bridge and SGS inspection' : 'Sold with existing test reports'), R('Delivery', 'Insured transport with tracking'), R('Disputes', 'Resolved before completion')] }, { h: 'SIGNATURES', rows: [R(u.name, o!.auction ? 'Accepted auction terms' : 'Signed electronically'), R('Mineral Bridge Ltd', 'Countersigned')] }] }),
-      payment: () => ({ title: 'Payment receipt', no: o!.txn || 'PR-' + o!.id.slice(-5), date: at(/Payment made/), status: o!.txn ? 'CONFIRMED' : 'PROCESSING', parties: [['PAID BY', u.name + ' · ' + u.business], ['PAID TO', 'Mineral Bridge Ltd']], sections: [{ h: 'PAYMENT', rows: [R('Order', o!.id), R('Method', (o!.form || {}).method), R('Status', o!.txn ? 'Confirmed by Mineral Bridge' : 'Awaiting confirmation'), R('Amount', MB.money(total), true)] }], note: o!.txn ? '' : 'This receipt becomes final once Mineral Bridge confirms the funds.' }),
-      invoice: () => ({ title: 'Tax invoice', no: 'INV-' + o!.id.slice(-5), date: at(/Payment confirmed/), status: 'PAID', parties: [['BILLED TO', u.business + (o!.addr ? ', ' + [o!.addr.street, o!.addr.city, o!.addr.country].filter(Boolean).join(', ') : '')], ['FROM', 'Mineral Bridge Ltd, Lagos']], sections: [{ h: 'ITEMS', rows: lines }, { h: 'AMOUNT', rows: o!.auction ? [R('Winning bid', MB.money(total)), R('Total paid', MB.money(total), true)] : [R('Product', MB.money(prod)), R('Fee and transport', MB.money(total - prod)), R('Total paid', MB.money(total), true)] }, { h: 'PAYMENT', rows: [R('Method', (o!.form || {}).method), R('Transaction', o!.txn)] }] }),
-      inspection: () => ({ title: 'Inspection report', no: 'INS-' + o!.id.slice(-5), date: MB.fmt(o!.company!.at), status: 'COMPLETED', parties: [['INSPECTED BY', o!.company!.by], ['LOCATION', (o!.form || {}).address || '—']], sections: [{ h: 'FINDINGS', rows: lines.concat([R('Result', o!.company!.result, true)]) }] }),
-      sgs: () => ({ title: 'Third-party test report', no: o!.sgs!.no, date: MB.fmt(o!.sgs!.at), status: 'COMPLIANT', issuer: 'SGS', parties: [['LABORATORY', 'SGS (independent inspector)'], ['CLIENT', 'Mineral Bridge Ltd']], sections: [{ h: 'RESULTS', rows: (o!.kind === 'sell' && o!.sell ? [['Net weight', o!.sell.qty + ' ' + o!.sell.unit], ['Grade', o!.sell.grade]] : items.map(([x, it]) => [x.name, it.qty + ' ' + x.unit + ' · ' + x.grade])).concat([['Sampling', 'ISO 3082 composite'], ['Result', o!.sgs!.result || 'Compliant']]).map(([k, v], i, a) => R(k, v, i === a.length - 1)) }], signer: 'SGS Laboratory', signerRole: 'AUTHORISED ANALYST' }),
-      payout: () => ({ title: 'Payment advice', no: 'PA-' + o!.id.slice(-5), date: at(/Payment released/), status: 'RELEASED', parties: [['PAID TO', u.name + ' · ' + u.business], ['FROM', 'Mineral Bridge Ltd']], sections: [{ h: 'PAYMENT', rows: [R('Sell request', o!.id), R('Method', (o!.form || {}).method), R('Amount', MB.money(total), true)] }] }),
-      shipment: () => ({ title: sp.name || 'Consignment note', no: ship.id || '', date: MB.fmt(((ship.events || [])[0] || [0, Date.now()])[1] as number), status: String(ship.status || '').toUpperCase(), issuer: String(ship.partner || '').toUpperCase(), parties: [['FROM', ship.from || '—'], ['TO', ship.to || '—']], sections: [{ h: 'CONSIGNMENT', rows: lines }, { h: 'TRANSPORT', rows: [R('Carrier', ship.partner), R('Mode', ship.mode), R('Vehicle', ship.vehicle), R('Seals', ship.seals), R('ETA', ship.eta)] }], signer: ship.partner, signerRole: 'CARRIER' }),
-      pod: () => ({ title: 'Proof of delivery', no: 'POD-' + ship.id, date: at(/Delivered|Received/), status: 'DELIVERED', parties: [['DELIVERED TO', ship.to || '—'], ['CARRIER', ship.partner || '—']], sections: [{ h: 'DELIVERY', rows: lines.concat([R('Received by', ship.pod), R('Seals', (ship.seals || '—') + ' · intact')]) }], signer: ship.partner, signerRole: 'CARRIER' }),
-      completion: () => ({ title: 'Completion certificate', no: 'CC-' + o!.id.slice(-5), date: at(/completed/i), status: 'COMPLETED', parties: pp, sections: [{ h: 'ORDER', rows: lines.concat([R('Receipt confirmed', at(/Receipt confirmed/)), R('Total', MB.money(total), true)]) }] }),
-      refund: () => { const r = [...(o!.history || []), o!.refund].find(x => x && x.ref === sp.ref) || o!.refund!; return { title: 'Refund receipt', no: r.ref, date: MB.fmt((r.at_refunded as number) || r.at), status: 'REFUNDED', parties: [['REFUNDED TO', u.name + ' · ' + r.to], ['FROM', 'Mineral Bridge Ltd']], sections: [{ h: 'REFUND', rows: [R('Order', o!.id), R('Type', r.type === 'full' ? 'Full refund' : 'Partial refund'), R('Reason', r.reason), R('Bank reference', r.bankRef), R('Amount', MB.money(r.amount), true)] }] }; },
-      cancel: () => ({ title: 'Cancellation confirmation', no: 'CX-' + o!.id.slice(-5), date: MB.fmt(o!.cancelled!.at), status: 'CANCELLED', parties: pp, sections: [{ h: o!.kind === 'sell' ? 'SELL REQUEST' : 'ORDER', rows: lines.concat([R('Reference', o!.id), R('Cancelled by', u.name), R('Reason', o!.cancelled!.reason + (o!.cancelled!.note ? ' · ' + o!.cancelled!.note : '')), R('Amount charged', MB.money(0), true)]) }], note: 'Any quotation and e-contract on this ' + (o!.kind === 'sell' ? 'sell request' : 'order') + ' are withdrawn.' }),
-      auction: () => { const a = (s.auctions || []).find(x => x.id === (o ? o.auction : sp.aid)) || ({ id: '', bids: [], qty: 0, start: 0, endsAt: Date.now(), pid: '' } as unknown as Auction); const x = MB.product(a.pid) || ({} as Product); return { title: 'Auction result certificate', no: 'AR-' + a.id, date: MB.fmt(a.endsAt), status: 'WON', parties: [['WINNING BIDDER', u.name + ' · ' + u.business], ['AUCTIONEER', 'Mineral Bridge Ltd']], sections: [{ h: 'LOT', rows: [R('Lot', x.name + ' · ' + x.id), R('Quantity', a.qty + ' ' + x.unit), R('Bids received', a.bids.length)] }, { h: 'RESULT', rows: [R('Starting bid', MB.money(a.start)), R('Winning bid', MB.money(this.aucCur(a)), true)] }], note: 'Payment of the winning bid is required to release the lot for dispatch.' }; },
-      lotReport: () => ({ title: 'Test report', no: p!.cert + '-TR', date: '14 Oct 2026', status: 'CERTIFIED', issuer: String(p!.lab).toUpperCase(), parties: [['LABORATORY', p!.lab], ['LOT', p!.name + ' · ' + p!.id]], sections: [{ h: 'RESULTS', rows: [R('Form', p!.form), R('Method', 'Fire assay · ISO 11426'), R('Sample', 'Composite of 5 points'), R('Purity / grade', p!.grade, true)] }], signer: p!.lab, signerRole: 'AUTHORISED ANALYST' }),
-      lotCoa: () => ({ title: 'Certificate of analysis', no: p!.cert, date: '15 Oct 2026', status: 'VALID', issuer: String(p!.lab).toUpperCase(), parties: [['ISSUED BY', p!.lab], ['LOT', p!.name + ' · ' + p!.id]], sections: [{ h: 'CERTIFIED VALUES', rows: [R('Available quantity', p!.avail + ' ' + p!.unit), R('Origin', p!.origin), R('Grade', p!.grade, true)] }], signer: p!.lab, signerRole: 'CERTIFYING OFFICER' }),
-      lotOrigin: () => ({ title: 'Origin declaration', no: 'OD-' + p!.id, date: '12 Oct 2026', status: 'DECLARED', parties: [['ORIGIN', p!.origin], ['LOT', p!.name + ' · ' + p!.id]], sections: [{ h: 'DECLARATION', rows: [R('Mine of origin', p!.origin.split(' · ')[0]), R('Extraction', 'Licensed operation'), R('Due diligence', 'OECD Annex II screening passed')] }] }),
+      refund: () => { const r = [...(o!.history || []), o!.refund].find(x => x && x.ref === sp.ref) || o!.refund!; return { title: 'Refund receipt', no: r.ref, date: MB.fmt((r.at_refunded as number) || r.at), status: String(r.status).toUpperCase(), parties: [['REFUNDED TO', u.name + ' · ' + r.to], ['FROM', 'Mineral Bridge Ltd']], sections: [{ h: 'REFUND', rows: [R('Order', o!.id), R('Type', r.type === 'full' ? 'Full refund' : 'Partial refund'), R('Reason', r.reason), R('Bank reference', r.bankRef), R('Amount', MB.money(r.amount), true)] }] }; },
+      cancel: () => ({ title: 'Cancellation confirmation', no: 'CX-' + o!.id.slice(-5), date: MB.fmt(o!.cancelled!.at), status: 'CANCELLED', parties: pp, sections: [{ h: o!.kind === 'sell' ? 'SELL REQUEST' : 'ORDER', rows: lines.concat([R('Reference', o!.id), R('Cancelled by', u.name), R('Reason', o!.cancelled!.reason + (o!.cancelled!.note ? ' · ' + o!.cancelled!.note : ''))]) }], note: 'Any quotation and e-contract on this ' + (o!.kind === 'sell' ? 'sell request' : 'order') + ' are withdrawn.' }),
+      lotReport: () => ({ title: 'Test report', no: p!.cert, date: '—', status: p!.cert ? 'CERTIFIED' : '', issuer: String(p!.lab || '').toUpperCase(), parties: [['LABORATORY', p!.lab || '—'], ['LOT', p!.name + ' · ' + p!.id]], sections: [{ h: 'RESULTS', rows: [R('Form', p!.form), R('Purity / grade', p!.grade, true)] }], signer: p!.lab, signerRole: 'AUTHORISED ANALYST' }),
+      lotCoa: () => ({ title: 'Certificate of analysis', no: p!.cert, date: '—', status: p!.cert ? 'VALID' : '', issuer: String(p!.lab || '').toUpperCase(), parties: [['ISSUED BY', p!.lab || '—'], ['LOT', p!.name + ' · ' + p!.id]], sections: [{ h: 'CERTIFIED VALUES', rows: [R('Available quantity', p!.avail + ' ' + p!.unit), R('Origin', p!.origin), R('Grade', p!.grade, true)] }], signer: p!.lab, signerRole: 'CERTIFYING OFFICER' }),
+      lotOrigin: () => ({ title: 'Origin declaration', no: 'OD-' + p!.id, date: '—', status: '', parties: [['ORIGIN', p!.origin], ['LOT', p!.name + ' · ' + p!.id]], sections: [{ h: 'DECLARATION', rows: [R('Mine of origin', String(p!.origin || '').split(' · ')[0])] }] }),
     };
     const fn = D[sp.t] as (() => D) | undefined;
     let d: D | null = null;
-    try { d = fn && (o || p || sp.t === 'auction') ? fn() : null; } catch { d = null; }
-    if (!d) return { title: 'Document unavailable', no: '', date: '—', status: '', parties: [], sections: [], issuer: '', signer: '', signerRole: '', note: 'This document is not available yet.' };
+    try { d = fn && (o || p) ? fn() : null; } catch { d = null; }
+    if (!d) return { title: sp.num && s.docLoading ? 'Loading document…' : 'Document unavailable', no: '', date: '—', status: '', parties: [], sections: [], issuer: '', signer: '', signerRole: '', note: sp.num && s.docLoading ? '' : 'This document is not available yet.' };
     return Object.assign({ issuer: 'MINERAL BRIDGE LTD', signer: 'Mineral Bridge Operations', signerRole: 'AUTHORISED SIGNATORY', note: '' }, d) as DocData;
   }
   docFile(d: DocData) { return ((d.title + ' ' + (d.no || '')).trim().replace(/[^\w-]+/g, '-')) + '.html'; }
@@ -705,7 +783,9 @@ export class MBStore {
     return out.join('\n');
   }
   downloadDoc(spec?: DocSpec) {
-    const d = this.docData(spec || this.state.doc);
+    const sp = spec || this.state.doc;
+    if (sp && sp.num && !this.state.docs[sp.num]) { void this.task(this.remote.loadDoc(sp.num).then(() => { if (this.state.docs[sp.num as string]) this.downloadDoc(sp); })); return; }
+    const d = this.docData(sp);
     if (!d.no) return this.flash('This document is not available yet');
     const file = this.docFile(d);
     Share.share({ title: file, message: this.docText(d) })
@@ -713,5 +793,6 @@ export class MBStore {
       .catch(() => this.flash('Download failed. Try again.'));
   }
 
-  resetDemo() { this.state = fresh(); this.version++; this.listeners.forEach(l => l()); this.flash('Demo data reset'); }
+  /** DEVELOPMENT ONLY: wipe in-memory state. Does not touch the server session. */
+  resetDemo() { if (!__DEV__) return; this.state = fresh(); this.version++; this.listeners.forEach(l => l()); this.flash('Local state reset'); }
 }

@@ -15,7 +15,7 @@ export function PrefsScreen() {
   const toggle = (k: keyof AppState['prefs']) => {
     const p = s.prefs;
     if (p[k] && Object.values(p).filter(Boolean).length <= 1) return store.flash('Keep at least one channel on');
-    store.setState({ prefs: { ...p, [k]: !p[k] } });
+    void store.task(store.remote.togglePref(k));
   };
   return (
     <FadeUp style={{ paddingHorizontal: 18, paddingBottom: 24 }}>
