@@ -89,7 +89,13 @@ export function AuctionScreen() {
                 <Tap key={inc} onPress={() => store.setState({ bidAmt: String(store.aucCur(a) + inc), bidErr: '' })} style={st.quick}><Txt mono s={12.5} w={600}>{'+' + MB.money(inc)}</Txt></Tap>
               ))}
             </View>
-            <Tap role="switch" checked={s.autoOn} onPress={() => store.setState({ autoOn: !s.autoOn, autoMax: s.autoMax || String(amt() + 5000) })} style={st.auto}>
+            <Tap role="switch" checked={s.autoOn} onPress={() => {
+              const next = !s.autoOn;
+              const maxStr = s.autoMax || String(amt() + 5000);
+              store.setState({ autoOn: next, autoMax: maxStr });
+              // BUG-017: register auto-bid with the server on toggle, not only after a manual bid.
+              void store.task(store.remote.syncAutoBid(a, next, Math.round(parseFloat(maxStr) || 0)));
+            }} style={st.auto}>
               <View style={{ flex: 1 }}>
                 <Txt s={13.5} w={600}>Auto-bid</Txt>
                 <Txt s={12} c={c.muted} style={{ marginTop: 2 }}>We bid for you, one step at a time, up to your limit</Txt>
@@ -98,7 +104,7 @@ export function AuctionScreen() {
             </Tap>
             {s.autoOn ? (
               <FadeUp dist={18} dur={250} style={{ marginTop: 10 }}>
-                <TextInput accessibilityLabel="Auto-bid limit" keyboardType="number-pad" value={s.autoMax} onChangeText={t => store.setState({ autoMax: t.replace(/[^\d]/g, ''), bidErr: '' })} allowFontScaling={false} style={st.autoIn} />
+                <TextInput accessibilityLabel="Auto-bid limit" keyboardType="number-pad" value={s.autoMax} onChangeText={t => store.setState({ autoMax: t.replace(/[^\d]/g, ''), bidErr: '' })} onBlur={() => { if (!s.autoOn) return; const max = Math.round(parseFloat(s.autoMax) || 0); if (max > 0) void store.task(store.remote.syncAutoBid(a, true, max)); }} allowFontScaling={false} style={st.autoIn} />
                 <View pointerEvents="none" style={{ position: 'absolute', left: 14, top: 0, bottom: 0, justifyContent: 'center' }}><Txt s={12} c={c.muted2}>Max $</Txt></View>
               </FadeUp>
             ) : null}

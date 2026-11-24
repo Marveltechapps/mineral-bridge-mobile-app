@@ -1,7 +1,7 @@
 // Live API layer for MBStore: session bootstrap, auth, KYC, catalogue, cart, orders, refunds, auctions,
 // notifications, profile/prefs/help. The store keeps navigation + validation; everything that talks to the
 // backend lives here and writes the result back into the store state through the existing UI shapes.
-import { Linking } from 'react-native';
+import { Linking, Share } from 'react-native';
 import {
   getAccessToken, hasSession, hydrateSession, isApiError, isNetworkError, newIdempotencyKey, subscribeSession, CLIENT_ERROR_CODES,
 } from '../api';
@@ -26,9 +26,9 @@ import { connectAuctionWs, connectNotificationStream } from '../services/realtim
 import type { AuctionWsHandle, RealtimeHandle } from '../services/realtime';
 import * as MB from '../lib/mb4';
 import {
-  applyMyBid, gramsPer, ID_TYPE_LABELS, ID_TYPE_WIRE, KYC_DOC_TO_KIND, KYC_KIND_TO_DOC, mapAuctionDetail, mapAuctionSummary, mapCategory,
+  applyMyBid, gramsPer, ID_TYPE_LABELS, ID_TYPE_WIRE, isOutgoingChatAuthor, KYC_DOC_TO_KIND, KYC_KIND_TO_DOC, mapAuctionDetail, mapAuctionSummary, mapCategory,
   mapDocumentRows, mapKycToUser, mapMeToUser, mapNotification, mapOrderDetail, mapProduct, mapRefund, mapShipment, moneyMajor,
-  pendingVariation, quotationNumber, resolveCountryCode, stageIndexOf, ts,
+  paymentWireSendsReference, pendingVariation, quotationNumber, quotationNumberToSubmit, resolveCountryCode, stageIndexOf, ts,
 } from '../lib/mappers';
 import type { Auction, ChatMsg, KycDocId, KycFile, Notif, Order, OrderItem, Refund } from '../types/mineralBridge';
 import type { AppScreen } from '../navigation/types';
@@ -425,7 +425,7 @@ export class Remote {
   private mapSupportMsgs(items: SupportMessage[]): SupportMsg[] {
     return (items || []).map((m, i) => {
       const a = m.author, kind = typeof a === 'string' ? a : a && typeof a === 'object' ? String((a as { kind?: string }).kind ?? '') : '';
-      const me = kind === 'user' || kind === 'customer', system = kind === 'system';
+      const me = isOutgoingChatAuthor(a, this.st.user?.id), system = kind === 'system';
       const name = typeof m.authorName === 'string' && m.authorName ? m.authorName : 'Mineral Bridge';
       return { id: String(m.id ?? m._id ?? 'm' + i), me, system, who: me ? 'You' : system ? 'Mineral Bridge' : name, text: m.body, at: ts(m.at) };
     }).sort((p, q) => p.at - q.at);
@@ -492,7 +492,12 @@ export class Remote {
   async loadKyc() {
     if (!this.st.user) return;
     try {
-      const k = await kycSvc.getKyc();
+      let k = await kycSvc.getKyc();
+      // BUG-001: UI defaults to National ID; sync the draft so requiredKinds includes id_back.
+      if (!k.idType) {
+        const wire = ID_TYPE_WIRE[this.st.kyc.idType] || 'national_id';
+        k = await kycSvc.patchKyc({ idType: wire });
+      }
       const prev = this.st.kyc, kyc = { ...prev, idType: this.idTypeLabel(k.idType), consent: k.consent } as AppState['kyc'];
       (Object.keys(KYC_DOC_TO_KIND) as KycDocId[]).forEach(id => { kyc[id] = false; });
       const lazy: [KycDocId, string][] = [];
@@ -606,16 +611,24 @@ export class Remote {
    * Resolves true when opened, false when the lot has no such document (so the caller can fall back), and
    * undefined when the request failed (the error was already shown).
    */
-  async openProductDocument(pid: string, type: ProductDocumentType): Promise<boolean | undefined> {
+  async openProductDocument(pid: string, type: ProductDocumentType, download = false): Promise<boolean | undefined> {
     return this.run('proddoc:' + pid + ':' + type, async () => {
       try {
         const d = await catalogueSvc.getProductDocument(pid, type);
         if (!d || !/^https?:\/\//i.test(d.url || '')) return false;
+        if (download) {
+          try {
+            await Share.share({ url: d.url, title: d.name || type });
+          } catch {
+            await Linking.openURL(d.url);
+          }
+          return true;
+        }
         await Linking.openURL(d.url);
         return true;
       } catch (e) {
         if (isApiError(e) && (e.status === 404 || e.code === 'document/not-available')) return false;
-        if (e instanceof Error && !isApiError(e)) { this.s.flash('Could not open this document on this device'); return undefined; }
+        if (e instanceof Error && !isApiError(e)) { this.s.flash(download ? 'Could not save this document' : 'Could not open this document on this device'); return undefined; }
         throw e;
       }
     });
@@ -729,7 +742,7 @@ export class Remote {
             id: c.reference, kind: c.kind, idx: stageIndexOf(c.kind, c.step, c.status), created: at, items: sell ? [] : [{ pid: c.reference, qty: 0, name: c.title }],
             log: [{ who: MB.WHO.mb, text: c.title, note: '', at }],
           };
-          if (sell) o.sell = { mineral: '', name: c.title, qty: 0, unit: '', grade: '', form: '', details: '', photos: 0, docs: [], ref: 0 };
+          if (sell) o.sell = { mineral: '', name: c.title, qty: c.sell?.qty ?? 0, unit: c.sell?.unit || 'kg', grade: c.sell?.grade || '', form: '', details: '', photos: 0, docs: [], ref: 0 };
           if (c.status === 'cancelled') o.cancelled = { reason: 'Cancelled', note: '', at };
           if (c.status === 'rejected') o.rejected = 'Rejected';
           return o;
@@ -840,6 +853,12 @@ export class Remote {
 
   /* quotation */
   private async withQuoteNo<T>(o: Order, fn: (no: string) => Promise<T>): Promise<T> {
+    const known = quotationNumberToSubmit(o.quote?.no, '');
+    if (known) {
+      try { return await fn(known); } catch (e) {
+        if (!(isApiError(e) && e.status === 409 && e.code === 'quotation/not-current')) throw e;
+      }
+    }
     const start = this.st.om[o.id]?.qTry ?? 0;
     let last: unknown;
     for (let i = start; i < start + 6; i++) {
@@ -909,7 +928,7 @@ export class Remote {
       const body = {
         method: wire, version: ver,
         ...(wire === 'btc' ? { btcTxid: (x.btcTx || '').trim() } : {}),
-        ...(wire === 'upi' || wire === 'net_banking' ? { reference: (x.payRef || '').trim() } : {}),
+        ...(paymentWireSendsReference(wire) ? { reference: (x.payRef || '').trim() } : {}),
         ...(x.uploads.proof.length ? { proofFileIds: x.uploads.proof.map(p => p.fileId) } : {}),
       };
       try { const r = await ordersSvc.submitPayment(c.id, body, key); this.idemClear('pay:' + c.id); return r; } catch (e) { if (!isNetworkError(e)) this.idemClear('pay:' + c.id); throw e; }
@@ -1024,11 +1043,10 @@ export class Remote {
   }
 
   /* chat */
+  /** BUG-016: author may be the string `'user'`/`'agent'`, or `{ kind, id, sender_role }`. */
   private mapMsgs(items: { body: string; author: unknown; at: string }[]): ChatMsg[] {
-    return items.map(m => {
-      const a = (m.author && typeof m.author === 'object' ? m.author : {}) as { kind?: string };
-      return { me: a.kind === 'customer' || a.kind === 'user', text: m.body, at: ts(m.at) };
-    }).sort((p, q) => p.at - q.at);
+    const myId = this.st.user?.id;
+    return items.map(m => ({ me: isOutgoingChatAuthor(m.author, myId), text: m.body, at: ts(m.at) })).sort((p, q) => p.at - q.at);
   }
 
   async loadChat(ref: string) {
@@ -1042,6 +1060,15 @@ export class Remote {
   }
 
   pollChat() { if (Date.now() - this.lastChatPoll > 8000) this.bg(this.loadChat(this.st.oid)); }
+
+  private lastOrderPoll = 0;
+  /** Refresh sell requests and the open order without a manual reload (BUG-015). */
+  pollOrders() {
+    if (!this.st.user || Date.now() - this.lastOrderPoll < 8000) return;
+    this.lastOrderPoll = Date.now();
+    this.bg(this.loadOrders());
+    if (this.st.screen === 'order' && this.st.oid) this.bg(this.loadOrder(this.st.oid, true));
+  }
 
   async sendChat(o: Order, text: string) {
     const msg: ChatMsg = { me: true, text, at: Date.now() };
@@ -1093,8 +1120,11 @@ export class Remote {
       for (const a of res.assets ?? []) {
         if (!a.uri) continue;
         if ((a.fileSize ?? 0) > 10 * 1048576) { this.s.flash('A file is larger than 10 MB and was skipped'); continue; }
-        const up = await filesSvc.uploadFile(a.uri, purpose, a.type, { fileName: a.fileName });
-        added.push({ fileId: up.fileId, name: a.fileName || up.name, uri: a.uri, type: a.type || up.contentType, label: opts.label });
+        // BUG-011: keep the local picker URI for preview (incl. content:// / HEIC); do not replace with a private storage URL.
+        const previewUri = a.uri;
+        const mime = a.type || (/\.heic$/i.test(a.fileName || '') ? 'image/heic' : 'image/jpeg');
+        const up = await filesSvc.uploadFile(a.uri, purpose, mime, { fileName: a.fileName });
+        added.push({ fileId: up.fileId, name: a.fileName || up.name, uri: previewUri, type: mime || up.contentType, label: opts.label });
       }
       if (added.length) this.s.setState(x => ({ uploads: { ...x.uploads, [bucket]: [...x.uploads[bucket], ...added] } }));
       this.syncCounters();
@@ -1257,6 +1287,25 @@ export class Remote {
         return;
       }
       default: return undefined;
+    }
+  }
+
+  /** BUG-017: register or clear the server-side auto-bid ceiling without requiring a manual bid. */
+  async syncAutoBid(a: Auction, on: boolean, maxMajor: number) {
+    const ref = a.sid || a.id;
+    try {
+      if (on && maxMajor > 0) {
+        await auctionsSvc.setAutoBid(ref, Math.round(maxMajor * 100));
+        this.s.patchAuc(a.id, c => { c.autoMax = maxMajor; return c; });
+        this.s.flash('Auto-bid on · up to ' + maxMajor);
+      } else {
+        await auctionsSvc.clearAutoBid(ref);
+        this.s.patchAuc(a.id, c => { c.autoMax = 0; return c; });
+        this.s.flash('Auto-bid off');
+      }
+    } catch (e) {
+      this.s.setState({ autoOn: !on });
+      this.fail(e);
     }
   }
 

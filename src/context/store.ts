@@ -8,7 +8,7 @@ import type { Auction, DocSpec, KycDocId, KycFile, Order, Product } from '../typ
 import { EMPTY_USER, emptyDraft, emptyRefund, fresh } from './state';
 import type { AppState, Errs } from './state';
 import { imgFor } from '../lib/images';
-import { moneyMajor, pendingVariation, resolveCountryCode } from '../lib/mappers';
+import { kycRequiredDocIds, moneyMajor, paymentSubmitError, pendingVariation, productHasLotDocuments, productIsSoldOut, resolveCountryCode, screenPollsOrders } from '../lib/mappers';
 import { Remote, contactIdentifier, fmtBytes } from './remote';
 import type { OtpChannel, ProductDocumentType } from '../api/types';
 
@@ -91,6 +91,7 @@ export class MBStore {
       if (st.screen === 'pay' && st.pmethod === 'Bitcoin') return this.setState({ tick: Date.now() });
       if (st.screen === 'chat') this.remote.pollChat();
       if (st.screen === 'supportThread') this.remote.pollSupport();
+      if (screenPollsOrders(st.screen)) this.remote.pollOrders();
       if (!['auctions', 'auction', 'orders'].includes(st.screen)) return;
       // A live auction past its end time is settled by the server; ask it for the result (at most every 10 s).
       (st.auctions || []).filter(a => a.status === 'live' && a.endsAt <= Date.now()).forEach(a => {
@@ -184,7 +185,9 @@ export class MBStore {
     const refunded = !!(o.refund && o.refund.status === 'refunded' && o.refund.type === 'full');
     const cx = !!o.cancelled, done = !next || refunded || cx, rej = !!o.rejected || cx;
     const needVar = !!pendingVariation(o) && !rej && !done;
-    const you = needVar || (!!next && next.actor === 'you' && !rej && (!o.hold || o.hold === 'changes'));
+    const nextScreen = next ? next.screen : '';
+    const holdBlocks = !!o.hold && o.hold !== 'changes' && !(o.hold === 'quoteDeclined' && nextScreen && nextScreen !== 'quote');
+    const you = needVar || (!!next && next.actor === 'you' && !rej && !holdBlocks);
     const holdText = o.hold ? (o.holdNote ? HOLD[o.hold].split(' · ')[0] + ' · ' + o.holdNote : HOLD[o.hold] || 'On hold') : '';
     const status = rej ? (cx ? 'Cancelled' : 'Rejected') : refunded ? 'Refunded' : done ? 'Completed' : needVar ? 'Action needed' : o.hold ? (HOLD[o.hold] || 'On hold').split(' · ')[0] : you ? 'Action needed' : 'Waiting on ' + ACTOR[next.actor];
     const tone = cx ? ['#F1EFE9', '#3A3940'] : rej ? ['#FDECEA', '#B42318'] : refunded ? ['#EDE9F7', '#4B3B8F'] : done ? ['#E2F2E9', '#17704C'] : you || o.hold ? ['#FBF3E4', '#A1620B'] : ['#F1EFE9', '#3A3940'];
@@ -218,7 +221,7 @@ export class MBStore {
       home: { tabs: 'home' }, cats: { tabs: 'buy', header: 1, title: 'Buy minerals', cartBtn: 1 },
       minerals: { tabs: 'buy', header: 1, canBack: 1, title: (MB.CATS.find(c => c.id === s.cat) || { name: '' }).name, cartBtn: 1 },
       lots: { tabs: 'buy', header: 1, canBack: 1, title: MB.mineralName(s.mineral), cartBtn: 1 },
-      detail: { header: 1, canBack: 1, title: 'Product details', cartBtn: 1, cta: ((MB.product(s.pid) || { avail: 0 }).avail > 0) ? 'Add to cart' : 'See other lots' },
+      detail: { header: 1, canBack: 1, title: 'Product details', cartBtn: 1, cta: (MB.product(s.pid) && !productIsSoldOut(MB.product(s.pid)!)) ? 'Add to cart' : 'See other lots' },
       cart: { header: 1, canBack: 1, title: 'Cart', cta: s.cart.length ? 'Proceed to checkout' : '' },
       checkout: { header: 1, canBack: 1, title: 'Checkout', cta: s.placing ? 'Placing order…' : 'Place order' },
       placed: { cta: 'Track order', cta2: 'Continue browsing' },
@@ -306,12 +309,11 @@ export class MBStore {
       },
       kyc: () => {
         if (s.kycBusy) return;
-        const k = s.kyc, need: string[] = [];
-        if (!k.front) need.push('ID front');
-        if (k.idType !== 'Passport' && !k.back) need.push('ID back');
-        if (!k.selfie) need.push('selfie');
-        if (!k.address) need.push('proof of address');
-        if (!k.biz && this.bizDocNeeded()) need.push('business document');
+        const k = s.kyc;
+        const labels: Record<string, string> = { front: 'ID front', back: 'ID back', selfie: 'selfie', address: 'proof of address', biz: 'business document' };
+        const need = kycRequiredDocIds(s.kycReq, k.idType, this.bizDocNeeded())
+          .filter((id) => !k[id])
+          .map((id) => labels[id] ?? id);
         if (need.length) return this.setState({ kycErr: 'Still needed: ' + need.join(', ') });
         const stale = (Object.keys(KYC_INFO) as KycDocId[]).filter(id => this.kycFlag(id));
         if (stale.length) return this.setState({ kycErr: 'Re-upload requested: ' + stale.map(id => KYC_INFO[id].title.toLowerCase()).join(', ') + '. Replace ' + (stale.length > 1 ? 'them' : 'it') + ' before resubmitting.' });
@@ -326,7 +328,7 @@ export class MBStore {
       auctionWon: () => this.auctionToOrder(s.aid, true),
       doc: () => this.downloadDoc(),
       kycDoc: () => { if (s.kycUploading) return; if (!s.kyc[s.kycDocId]) return this.setState({ kycDocErr: 'Upload a photo or file first' }); this.flash('Document saved'); this.nextKycDoc(); },
-      detail: () => { const p = MB.product(s.pid); if (p && p.avail <= 0) return this.go('lots', { mineral: p.mineral, fform: 'All', labOnly: false, search: '' }); this.addToCart(); },
+      detail: () => { const p = MB.product(s.pid); if (p && productIsSoldOut(p)) return this.go('lots', { mineral: p.mineral, fform: 'All', labOnly: false, search: '' }); this.addToCart(); },
       cart: () => { if (!s.cart.length) return; if (!this.gate('checkout')) return; this.prefillShip(); this.go('checkout'); },
       checkout: () => this.placeOrder(),
       placed: () => { this.setState({ stack: ['orders'], screen: 'order' }); this.top(); },
@@ -346,8 +348,7 @@ export class MBStore {
         if (s.paying || !this.stepOpen()) return;
         const method = s.pmethod || 'UPI';
         if (method === 'Bitcoin') { const tx = (s.btcTx || '').trim(); if (!/^[0-9a-fA-Fx]{16,}$/.test(tx)) return this.setState({ payErr: 'Paste the transaction ID from your wallet (at least 16 characters)' }); }
-        else if (method === 'UPI' || method === 'Net banking') { if ((s.payRef || '').trim().length < 6) return this.setState({ payErr: 'Enter the ' + (method === 'UPI' ? 'UPI' : 'bank') + ' reference of your payment' }); }
-        else if (!s.uploads.proof.length) return this.setState({ payErr: 'Upload the payment receipt first' });
+        else { const err = paymentSubmitError(method, s.payRef || '', !!s.uploads.proof.length); if (err) return this.setState({ payErr: err }); }
         this.setState({ payErr: '' });
         bg(this.remote.submitPay(method));
       },
@@ -420,10 +421,10 @@ export class MBStore {
     const s = this.state, p = MB.product(s.pid), qIn = parseFloat(s.qty);
     if (!p) return;
     const u = this.unitOf(p), q = this.conv(qIn, u, p.unit), nf = (v: number) => MB.num(+v.toFixed(6));
-    if (p.avail <= 0) return this.flash('This lot is no longer available');
+    if (productIsSoldOut(p)) return this.flash('This lot is no longer available');
     if (!(qIn > 0)) return this.setState({ qtyErr: 'Enter a quantity' });
     if (q < p.min) return this.setState({ qtyErr: 'Minimum order is ' + nf(this.conv(p.min, p.unit, u)) + ' ' + u + (u !== p.unit ? ' (' + p.min + ' ' + p.unit + ')' : '') });
-    if (q > p.avail) return this.setState({ qtyErr: 'Only ' + nf(this.conv(p.avail, p.unit, u)) + ' ' + u + ' available' + (u !== p.unit ? ' (' + p.avail + ' ' + p.unit + ')' : '') });
+    if (p.avail > 0 && q > p.avail) return this.setState({ qtyErr: 'Only ' + nf(this.conv(p.avail, p.unit, u)) + ' ' + u + ' available' + (u !== p.unit ? ' (' + p.avail + ' ' + p.unit + ')' : '') });
     const had = s.cart.some(c => c.pid === p.id);
     void this.task(this.remote.cartPut(p.id, qIn, u, q).then(ok => { if (!ok) return; this.flash(had ? 'Cart quantity updated' : 'Added to cart'); this.go('cart'); }));
   }
@@ -441,7 +442,7 @@ export class MBStore {
     if (String(sh.mobile || '').replace(/\D/g, '').length < 9) e.mobile = 'Mobile needs at least 9 digits';
     if (!e.country && !resolveCountryCode(sh.country)) e.country = 'Enter the delivery country as a full country name';
     if (Object.keys(e).length) return this.err('shipErr', e);
-    const bad = s.cart.find(c => { const p = MB.product(c.pid); return !!c.issue || (!!p && (p.avail <= 0 || c.qty > p.avail)); });
+    const bad = s.cart.find(c => { const p = MB.product(c.pid); return !!c.issue || (!!p && (productIsSoldOut(p) || (p.avail > 0 && c.qty > p.avail))); });
     if (bad) return this.flash('A cart item is no longer available in that quantity');
     if (!s.cart.length) return this.flash('Your cart is empty');
     this.setState({ shipErr: {} });
@@ -548,7 +549,7 @@ export class MBStore {
   // ---- Catalogue documents
   /** Open a lot document from the API (signed URL). Falls back to the on-device document view when the lot has none. */
   openProductDoc(p: Product, type: ProductDocumentType, t: string, download = false) {
-    void this.task(this.remote.openProductDocument(p.id, type).then(ok => { if (ok === false) { if (download) this.downloadDoc({ t, pid: p.id }); else this.openDoc({ t, pid: p.id }); } }));
+    void this.task(this.remote.openProductDocument(p.id, type, download).then(ok => { if (ok === false) { if (download) this.downloadDoc({ t, pid: p.id }); else this.openDoc({ t, pid: p.id }); } }));
   }
 
   // ---- KYC
@@ -566,7 +567,7 @@ export class MBStore {
   setConsent(v: boolean) { void this.task(this.remote.setKycConsent(v)); }
   nextKycDoc() {
     const s = this.state, k = s.kyc;
-    const ids = (['front', 'back', 'selfie', 'address', 'biz'] as KycDocId[]).filter(id => (id !== 'back' || k.idType !== 'Passport') && (id !== 'biz' || this.bizDocNeeded()));
+    const ids = kycRequiredDocIds(s.kycReq, k.idType, this.bizDocNeeded());
     const nxt = ids.find(id => !k[id] && id !== s.kycDocId);
     if (nxt) { this.setState({ kycDocId: nxt, kycDocErr: '' }); this.top(); } else this.back();
   }
@@ -592,7 +593,12 @@ export class MBStore {
     if (a.result === 'won') return { cta: this.aucUnpaid(a) ? 'Pay now · ' + MB.money(this.aucCur(a)) : 'Track order ' + (a.orderId || '') };
     return { cta: 'Browse similar lots' };
   }
-  openAuction(id: string) { const a = this.aucOf(id); this.go('auction', { aid: id, bidAmt: a ? String(this.aucMin(a)) : '', bidErr: '', autoOn: false, autoMax: '' }); }
+  openAuction(id: string) {
+    const a = this.aucOf(id);
+    // BUG-017: restore server auto-bid ceiling instead of always clearing the toggle.
+    const max = a && (a.autoMax ?? 0) > 0 ? String(a.autoMax) : '';
+    this.go('auction', { aid: id, bidAmt: a ? String(this.aucMin(a)) : '', bidErr: '', autoOn: !!max, autoMax: max });
+  }
   auctionPrimary() {
     const s = this.state, a = this.aucOf(); if (!a) return;
     if (a.status === 'upcoming') { if (!this.gate('auction')) return; void this.task(this.remote.toggleReminder(a, !s.reminders[a.id])); return; }

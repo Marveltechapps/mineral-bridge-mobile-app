@@ -6,6 +6,7 @@ import { FadeUp } from '../../components/ui/Motion';
 import { Tap } from '../../components/ui/Tap';
 import { Txt } from '../../components/ui/Txt';
 import { colors as c } from '../../theme';
+import { otpEmailForDisplay } from '../../lib/mappers';
 
 export function OtpScreen() {
   const store = useStore(), s = store.state, a = s.auth;
@@ -15,7 +16,9 @@ export function OtpScreen() {
   // Re-render once a second while the resend countdown runs.
   useEffect(() => { if (s.resendAt <= Date.now()) return undefined; const i = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(i); }, [s.resendAt]);
   const email = a.method === 'email';
-  const to = s.maskedDest || (email ? (a.value || 'your email') : (a.cc || '+234') + ' ' + (a.value.trim().replace(/^0+/, '') || 'your number'));
+  const to = email
+    ? otpEmailForDisplay(a.value, s.maskedDest)
+    : (s.maskedDest || ((a.cc || '+234') + ' ' + (a.value.trim().replace(/^0+/, '') || 'your number')));
   const wait = Math.max(0, Math.ceil((s.resendAt - Date.now()) / 1000));
   return (
     <FadeUp style={{ paddingTop: 10, paddingHorizontal: 22, paddingBottom: 24 }}>

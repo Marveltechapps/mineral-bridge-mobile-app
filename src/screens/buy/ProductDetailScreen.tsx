@@ -9,6 +9,7 @@ import { Tap } from '../../components/ui/Tap';
 import { Label, Txt } from '../../components/ui/Txt';
 import { imgFor } from '../../lib/images';
 import { mineralName, num, product } from '../../lib/mb4';
+import { productHasLotDocuments, productIsSoldOut } from '../../lib/mappers';
 import { colors as c } from '../../theme';
 import { CatalogueState } from './CatalogueState';
 import { lotLine } from './lotCard';
@@ -33,7 +34,7 @@ export function ProductDetailScreen() {
   const img = imgFor(p.img), pu = p.unit, u = store.unitOf(p), can = !!UF[pu];
   const nf = (v: number) => num(+v.toFixed(6)), q = parseFloat(s.qty);
   const inCart = s.cart.find(x => x.pid === p.id);
-  const docs = p.lab ? ([['Test report', p.lab + ' · ' + p.cert + '-TR.pdf'], ['Certificate of analysis', p.cert + '.pdf'], ['Origin declaration', 'Mine of origin · ' + p.origin.split(' · ')[0]]] as const).map(([n, f], i) => {
+  const docs = productHasLotDocuments(p) ? ([['Test report', p.lab + ' · ' + p.cert + '-TR.pdf'], ['Certificate of analysis', p.cert + '.pdf'], ['Origin declaration', 'Mine of origin · ' + p.origin.split(' · ')[0]]] as const).map(([n, f], i) => {
     const t = ['lotReport', 'lotCoa', 'lotOrigin'][i], type = (['lot_test_report', 'certificate_of_analysis', 'origin_declaration'] as const)[i];
     // The API serves the real file (signed URL); lots without one keep the on-device document view.
     return { n, f, tap: () => store.openProductDoc(p, type, t), dl: () => store.openProductDoc(p, type, t, true) };
@@ -54,12 +55,12 @@ export function ProductDetailScreen() {
         <Txt serif s={30} lh={1.05} style={{ marginTop: 6 }}>{p.name}</Txt>
         <Txt s={13} c={c.muted} style={{ marginTop: 6 }}>{p.origin}</Txt>
       </View>
-      {p.avail <= 0 ? <View accessibilityRole="alert" style={st.off}><Txt s={13.5} w={600} c={c.red}>This lot is sold out. Choose another lot of {mineralName(p.mineral)}.</Txt></View> : null}
+      {productIsSoldOut(p) ? <View accessibilityRole="alert" style={st.off}><Txt s={13.5} w={600} c={c.red}>This lot is sold out. Choose another lot of {mineralName(p.mineral)}.</Txt></View> : null}
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
         <Card r={18} style={st.tile}><Label>AVAILABLE</Label><Txt s={16} w={600} style={{ marginTop: 6 }}>{lotLine(p)}</Txt></Card>
         <Card r={18} style={st.tile}><Label>PURITY</Label>{p.lab ? <Txt s={16} w={600} style={{ marginTop: 6 }}>{p.grade}</Txt> : <Txt s={13.5} w={600} c={c.muted} style={{ marginTop: 6 }}>On request</Txt>}</Card>
       </View>
-      {p.lab ? (
+      {productHasLotDocuments(p) ? (
         <>
           <Label style={st.sec}>TESTING & CERTIFICATION</Label>
           <ListCard>
@@ -72,7 +73,7 @@ export function ProductDetailScreen() {
       ) : (
         <View style={st.noLab}><Txt s={13} c={c.ink2} lh={1.5}>No third-party test report for this lot yet. Ask Mineral Bridge for quality details before you order.</Txt></View>
       )}
-      {p.avail > 0 ? (
+      {!productIsSoldOut(p) ? (
         <>
           <Label style={st.sec}>QUANTITY TO ORDER</Label>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>

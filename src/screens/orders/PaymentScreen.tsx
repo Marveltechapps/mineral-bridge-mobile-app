@@ -8,6 +8,7 @@ import { Drift, FadeUp, Pulse, Spin } from '../../components/ui/Motion';
 import { Tap } from '../../components/ui/Tap';
 import { UploadPicker } from '../../components/UploadPicker';
 import { Label, Txt } from '../../components/ui/Txt';
+import { paymentNeedsReference } from '../../lib/mappers';
 import * as MB from '../../lib/mb4';
 import { colors as c } from '../../theme';
 import { currentOrder } from './orderVals';
@@ -97,9 +98,9 @@ export function PaymentScreen() {
         </>
       ) : null}
       {pm === 'Bitcoin' && !btc ? <Tap onPress={() => { void store.task(store.remote.btcQuote()); }} style={{ marginTop: 12 }}><Txt s={13.5} w={600} c={c.goldInk} center>Get Bitcoin quote</Txt></Tap> : null}
-      {pm === 'UPI' || pm === 'Net banking' ? (
+      {paymentNeedsReference(pm) ? (
         <>
-          <Label style={st.sec}>{pm === 'UPI' ? 'UPI TRANSACTION REFERENCE' : 'BANK PAYMENT REFERENCE'}</Label>
+          <Label style={st.sec}>{pm === 'UPI' ? 'UPI TRANSACTION REFERENCE' : 'PAYMENT REFERENCE'}</Label>
           <Field accessibilityLabel="Payment reference" focusGold mono fs={13} h={50} value={s.payRef || ''} placeholder="Reference shown after you pay" autoCapitalize="characters" autoCorrect={false} onChangeText={t => store.setState({ payRef: t, payErr: '' })} style={{ paddingHorizontal: 14 }} />
         </>
       ) : null}
