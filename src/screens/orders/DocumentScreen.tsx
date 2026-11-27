@@ -1,80 +1,80 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useStore } from '../../context/AppStore';
-import { FadeUp } from '../../components/ui/Motion';
-import { Txt } from '../../components/ui/Txt';
-import { colors as c } from '../../theme';
+import { T } from '../../components/mb/base';
+import { Logo } from '../../components/mb/art';
+import { Empty, Pill } from '../../components/mb/kit';
+import { D } from '../../theme';
+import { NavyCard } from './OrderTrackingScreen';
 
 const OK: Record<string, number> = { SIGNED: 1, PAID: 1, CONFIRMED: 1, COMPLETED: 1, COMPLIANT: 1, CERTIFIED: 1, VALID: 1, RELEASED: 1, DELIVERED: 1, REFUNDED: 1, WON: 1, DECLARED: 1 };
 
-/** In-app preview of an order or lot document. */
+/** In-app preview of an order or lot document. Download / Share are the screen CTAs. */
 export function DocumentScreen() {
   const store = useStore(), s = store.state;
-  if (s.doc && s.doc.num && !s.docs[s.doc.num]) {
-    return <FadeUp style={{ paddingHorizontal: 18, paddingTop: 40 }}><Txt s={14} c={c.muted} center>{s.docLoading ? 'Loading document…' : 'This document is not available right now. Go back and try again.'}</Txt></FadeUp>;
-  }
+  if (s.doc && s.doc.num && !s.docs[s.doc.num]) return <Empty icon="file" title={s.docLoading ? 'Loading document…' : 'Document unavailable'} msg={s.docLoading ? undefined : 'This document is not available right now. Go back and try again.'} />;
   const d = store.docData(s.doc), ok = !!OK[d.status];
   return (
-    <FadeUp style={{ paddingHorizontal: 18, paddingBottom: 24 }}>
+    <View style={{ paddingTop: 14, paddingHorizontal: 18 }}>
       <View style={st.paper}>
-        <View style={st.top}>
-          <View>
-            <Txt serif s={19} lh={1} c={c.paper}>Mineral Bridge</Txt>
-            <Txt mono s={8.5} ls={0.8} c={c.gold} style={{ marginTop: 4 }}>VERIFIED MINERAL TRADING</Txt>
+        <NavyCard style={{ borderRadius: 0, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10, paddingVertical: 14 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Logo sz={34} flat />
+            <View>
+              <T s={15} w={800} c={D.white}>Mineral Bridge</T>
+              <T s={9} w={800} c={D.GOLD} ls={0.08}>VERIFIED MINERAL TRADING</T>
+            </View>
           </View>
           <View style={{ alignItems: 'flex-end', flexShrink: 1 }}>
-            <Txt mono s={9} ls={0.6} c={c.faint} right>{d.issuer}</Txt>
-            <Txt mono s={10.5} c={c.paper} right style={{ marginTop: 3 }}>{d.no}</Txt>
+            <T s={9} w={700} c={D.navyFaint} right>{d.issuer}</T>
+            <T s={11} w={800} c={D.white} right style={{ marginTop: 2 }}>{d.no}</T>
           </View>
-        </View>
-        <View style={{ paddingTop: 16, paddingHorizontal: 18, paddingBottom: 6 }}>
+        </NavyCard>
+        <View style={{ padding: 16 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
-            <Txt serif s={24} lh={1.1} style={{ flexShrink: 1 }}>{d.title}</Txt>
-            {d.status ? <View style={{ paddingVertical: 3, paddingHorizontal: 9, borderRadius: 99, backgroundColor: ok ? c.greenBg : c.amberBg }}><Txt s={10.5} w={700} ls={0.3} c={ok ? c.green : c.amber}>{d.status}</Txt></View> : null}
+            <T s={20} w={800} lh={1.2} style={{ flexShrink: 1 }}>{d.title}</T>
+            {d.status ? <Pill label={d.status} bg={ok ? D.greenBg : D.amberBg} fg={ok ? D.green : D.AMBER} pad={[3, 9]} /> : null}
           </View>
-          <Txt s={11.5} c={c.muted} style={{ marginTop: 4 }}>Issued {d.date}</Txt>
+          <T s={11.5} w={600} c={D.MUT} style={{ marginTop: 4 }}>{'Issued ' + d.date}</T>
           {d.parties.length ? (
             <View style={st.parties}>
               {d.parties.map(([k, v]) => (
                 <View key={k} style={{ flex: 1, minWidth: 0 }}>
-                  <Txt mono s={8.5} ls={0.6} c={c.muted2}>{k}</Txt>
-                  <Txt s={12} w={600} lh={1.35} style={{ marginTop: 3 }}>{v}</Txt>
+                  <T s={9.5} w={800} c={D.GD} ls={0.06}>{k}</T>
+                  <T s={12} w={800} lh={1.35} style={{ marginTop: 3 }}>{v}</T>
                 </View>
               ))}
             </View>
           ) : null}
           {d.sections.map(sec => (
             <View key={sec.h} style={{ marginTop: 14 }}>
-              <Txt mono s={9} ls={0.7} c={c.goldInk} style={st.secHead}>{sec.h}</Txt>
+              <T s={10.5} w={800} c={D.GD} ls={0.06} style={{ paddingBottom: 5, borderBottomWidth: 1.5, borderBottomColor: D.G }}>{sec.h}</T>
               {sec.rows.map((r, i) => (
-                <View key={i} style={st.row}>
-                  <Txt s={12} c={c.muted} style={{ flexShrink: 1 }}>{r.k}</Txt>
-                  <Txt s={12} w={r.w === 700 ? 700 : 500} mono={r.mono} right style={{ flexShrink: 1 }}>{r.v}</Txt>
+                <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: D.BOR }}>
+                  <T s={12} w={700} c={D.MUT} style={{ flexShrink: 1 }}>{r.k}</T>
+                  <T s={12} w={800} right style={{ flexShrink: 1 }}>{r.v}</T>
                 </View>
               ))}
             </View>
           ))}
-          {d.note ? <Txt s={11} c={c.muted} lh={1.5} style={{ marginTop: 12 }}>{d.note}</Txt> : null}
-        </View>
-        <View style={st.foot}>
-          <View style={{ flexShrink: 1 }}>
-            <Txt serif italic s={18}>{d.signer}</Txt>
-            <Txt mono s={8.5} ls={0.6} c={c.muted2} style={{ marginTop: 2 }}>{d.signerRole}</Txt>
+          {d.note ? <T s={11.5} w={600} c={D.MUT} lh={1.5} style={{ marginTop: 12 }}>{d.note}</T> : null}
+          <View style={st.foot}>
+            <View style={{ flexShrink: 1 }}>
+              <T s={16} w={700} italic>{d.signer}</T>
+              <T s={9} w={800} c={D.MUT} ls={0.06} style={{ marginTop: 2 }}>{d.signerRole}</T>
+            </View>
+            <View style={st.stamp}><T s={8} w={800} c={D.GD} lh={1.2} center>{'MB\nVERIFIED'}</T></View>
           </View>
-          <View style={st.stamp}><Txt mono s={7.5} ls={0.4} lh={1.2} c={c.goldInk} center>{'MB\nVERIFIED'}</Txt></View>
         </View>
       </View>
-      <Txt s={11.5} c={c.muted2} center style={{ marginTop: 12 }}>Preview · {store.docFile(d)}</Txt>
-    </FadeUp>
+      <T s={11.5} w={600} c={D.MUT} center style={{ marginTop: 12 }}>{'Preview · ' + store.docFile(d)}</T>
+    </View>
   );
 }
 
 const st = StyleSheet.create({
-  paper: { borderRadius: 6, backgroundColor: c.white, boxShadow: '0 1px 2px rgba(18,18,20,.06), 0 12px 32px rgba(18,18,20,.10)', borderWidth: 1, borderColor: c.line, overflow: 'hidden' },
-  top: { paddingTop: 16, paddingHorizontal: 18, paddingBottom: 14, backgroundColor: c.ink, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 },
-  parties: { flexDirection: 'row', gap: 10, marginTop: 14, paddingVertical: 11, paddingHorizontal: 12, borderRadius: 10, backgroundColor: c.field2 },
-  secHead: { paddingBottom: 5, borderBottomWidth: 1.5, borderBottomColor: c.ink },
-  row: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: c.hair },
-  foot: { marginTop: 14, marginHorizontal: 18, marginBottom: 16, paddingTop: 12, borderTopWidth: 1, borderStyle: 'dashed', borderTopColor: c.dash, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', gap: 10 },
-  stamp: { width: 58, height: 58, borderRadius: 29, borderWidth: 1.5, borderColor: c.gold, alignItems: 'center', justifyContent: 'center', transform: [{ rotate: '-12deg' }] },
+  paper: { borderRadius: 18, backgroundColor: D.white, borderWidth: 1, borderColor: D.BOR, overflow: 'hidden', boxShadow: '0 8px 22px -16px rgba(14,26,51,.5)' },
+  parties: { flexDirection: 'row', gap: 10, marginTop: 14, padding: 12, borderRadius: 12, backgroundColor: D.TINT },
+  foot: { marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderStyle: 'dashed', borderTopColor: D.dash, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', gap: 10 },
+  stamp: { width: 58, height: 58, borderRadius: 29, borderWidth: 1.5, borderColor: D.GOLD, alignItems: 'center', justifyContent: 'center', transform: [{ rotate: '-12deg' }] },
 });

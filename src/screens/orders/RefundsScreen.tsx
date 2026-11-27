@@ -1,45 +1,35 @@
 import React from 'react';
 import { View } from 'react-native';
 import { useStore } from '../../context/AppStore';
-import { Card, Pill } from '../../components/ui/Blocks';
-import { FadeUp } from '../../components/ui/Motion';
-import { Tap } from '../../components/ui/Tap';
-import { Txt } from '../../components/ui/Txt';
+import { T } from '../../components/mb/base';
+import { Empty, Pill, Press } from '../../components/mb/kit';
 import * as MB from '../../lib/mb4';
-import { colors as c } from '../../theme';
+import { D } from '../../theme';
 import { refundTone } from './orderVals';
 
+/** Refunds (`scr_refunds`). */
 export function RefundsScreen() {
   const store = useStore(), s = store.state;
   const list = s.orders.filter(x => x.refund).sort((a, b) => b.refund!.at - a.refund!.at);
+  if (!list.length) return <Empty icon="refund" title="No refund requests" msg="You can request a refund from any paid order that is not yet completed." cta="Go to orders" onCta={() => store.jump('orders')} />;
   return (
-    <FadeUp style={{ paddingHorizontal: 18, paddingBottom: 24 }}>
-      <View style={{ gap: 8 }}>
-        {list.map(x => {
-          const r = x.refund!, t = refundTone(r.status);
-          return (
-            <Tap key={x.id} onPress={() => store.go('order', { oid: x.id })}>
-              <Card r={18} style={{ paddingVertical: 14, paddingHorizontal: 15 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
-                  <Txt mono s={11} c={c.muted2} style={{ flexShrink: 1 }}>{r.ref} · {x.id}</Txt>
-                  <Pill label={t[2]} bg={t[0]} fg={t[1]} />
-                </View>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 6 }}>
-                  <Txt s={14} w={600} style={{ flexShrink: 1 }}>{MB.titleOf(x)}</Txt>
-                  <Txt mono s={15} w={600}>{MB.money(r.amount)}</Txt>
-                </View>
-                <Txt s={12} c={c.muted} style={{ marginTop: 3 }}>{r.reason} · {MB.fmt(r.at)}</Txt>
-              </Card>
-            </Tap>
-          );
-        })}
-      </View>
-      {!list.length ? (
-        <Card style={{ paddingVertical: 26, paddingHorizontal: 20, alignItems: 'center' }}>
-          <Txt s={15} w={600}>No refund requests</Txt>
-          <Txt s={13} c={c.muted} center style={{ marginTop: 6 }}>You can request a refund from any paid order that is not yet completed.</Txt>
-        </Card>
-      ) : null}
-    </FadeUp>
+    <View style={{ paddingTop: 14, paddingHorizontal: 18, gap: 10 }}>
+      {list.map(x => {
+        const r = x.refund!, t = refundTone(r.status);
+        return (
+          <Press key={x.id} scale={0.985} onPress={() => store.go('order', { oid: x.id })} style={{ backgroundColor: D.white, borderWidth: 1, borderColor: D.BOR, borderRadius: 18, padding: 14 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+              <T s={11} w={800} c={D.MUT} style={{ flexShrink: 1 }}>{r.ref + ' · ' + x.id}</T>
+              <Pill label={t[2]} bg={t[0]} fg={t[1]} pad={[3, 9]} />
+            </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, marginTop: 6 }}>
+              <T s={14.5} w={800} style={{ flexShrink: 1 }}>{MB.titleOf(x)}</T>
+              <T s={14.5} w={800} c={D.GD}>{MB.money(r.amount)}</T>
+            </View>
+            <T s={12} w={600} c={D.MUT} style={{ marginTop: 2 }}>{r.reason + ' · ' + MB.fmt(r.at)}</T>
+          </Press>
+        );
+      })}
+    </View>
   );
 }

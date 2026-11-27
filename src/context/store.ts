@@ -35,6 +35,12 @@ export const KYC_INFO: Record<KycDocId, { title: string; short: string; ratio: n
 export interface Meta {
   header?: number; canBack?: number; title?: string; cartBtn?: number; step?: string; prog?: string;
   cta?: string; cta2?: string; cta2Fg: string; ctaOpacity: number; tabs: string;
+  /** Header subtitle and 3-segment registration progress (final design). */
+  sub?: string; prog3?: number;
+  /** CTA look: button kind and leading icon. `ownCta` = the screen draws its own actions. */
+  ctaKind?: 'primary' | 'ghost'; ctaIcon?: string; ownCta?: number;
+  /** Notifications header action. */
+  readAll?: number;
 }
 
 export interface View {
@@ -190,7 +196,7 @@ export class MBStore {
     const you = needVar || (!!next && next.actor === 'you' && !rej && !holdBlocks);
     const holdText = o.hold ? (o.holdNote ? HOLD[o.hold].split(' · ')[0] + ' · ' + o.holdNote : HOLD[o.hold] || 'On hold') : '';
     const status = rej ? (cx ? 'Cancelled' : 'Rejected') : refunded ? 'Refunded' : done ? 'Completed' : needVar ? 'Action needed' : o.hold ? (HOLD[o.hold] || 'On hold').split(' · ')[0] : you ? 'Action needed' : 'Waiting on ' + ACTOR[next.actor];
-    const tone = cx ? ['#F1EFE9', '#3A3940'] : rej ? ['#FDECEA', '#B42318'] : refunded ? ['#EDE9F7', '#4B3B8F'] : done ? ['#E2F2E9', '#17704C'] : you || o.hold ? ['#FBF3E4', '#A1620B'] : ['#F1EFE9', '#3A3940'];
+    const tone = cx ? ['#F1EFE9', '#3A3940'] : rej ? ['#FDECEA', '#B42318'] : refunded ? ['#EDE9F7', '#4B3B8F'] : done ? ['#E2F2E9', '#17704C'] : you || o.hold ? ['#FBF3E4', '#A1620B'] : ['#EEF0F5', '#3A4560'];
     const value = o.quote ? (o.quote.est ? 'From ' : '') + MB.money(o.quote.total) : 'By quotation';
     const p0 = o.kind === 'sell' && o.sell ? MB.PRODUCTS.find(p => p.mineral === o.sell!.mineral) : MB.product(o.items[0] && o.items[0].pid);
     const lastAt = o.log.length ? o.log[o.log.length - 1].at : o.created;
@@ -210,24 +216,26 @@ export class MBStore {
 
   meta(): Meta {
     const s = this.state, u = s.user;
+    const kycIds = kycRequiredDocIds(s.kycReq, s.kyc.idType, this.bizDocNeeded()), kycPos = Math.max(0, kycIds.indexOf(s.kycDocId));
+    const ord = this.order(), detailP = MB.product(s.pid), detailOff = !!detailP && productIsSoldOut(detailP);
     const M: Partial<Record<AppScreen, Partial<Meta>>> = {
-      welcome: {}, auth: { header: 1, canBack: 1, title: s.auth.mode === 'signup' ? 'Create account' : 'Sign in', cta: s.authBusy ? 'Sending code…' : 'Send verification code' },
-      otp: { header: 1, canBack: 1, title: 'Verify', cta: s.authBusy ? 'Verifying…' : 'Verify and continue' },
-      regType: { header: 1, title: 'Account type', step: 'STEP 1 OF 3 · ACCOUNT TYPE', prog: '33%', cta: 'Continue' },
-      regDetails: { header: 1, canBack: 1, title: 'Your details', step: 'STEP 2 OF 3 · DETAILS', prog: '66%', cta: s.authBusy ? 'Creating account…' : 'Continue' },
-      kyc: { header: 1, canBack: 1, title: 'KYC verification', step: 'STEP 3 OF 3 · KYC', prog: '100%', cta: s.kycBusy ? 'Submitting…' : 'Submit for review' },
-      kycDoc: { header: 1, canBack: 1, title: 'Upload document', step: 'STEP 3 OF 3 · KYC', prog: '100%', cta: s.kycUploading ? 'Uploading…' : s.kyc[s.kycDocId] ? 'Save and continue' : 'Upload to continue', ctaOpacity: s.kycUploading || !s.kyc[s.kycDocId] ? 0.45 : 1 },
-      kycDone: { cta: s.returnTo ? 'Continue where you left off' : 'Go to home' },
-      home: { tabs: 'home' }, cats: { tabs: 'buy', header: 1, title: 'Buy minerals', cartBtn: 1 },
+      welcome: { ownCta: 1 }, auth: { canBack: 1, title: s.auth.mode === 'signup' ? 'Create account' : 'Sign in', cta: s.authBusy ? 'Sending code…' : 'Send verification code', ownCta: 1 },
+      otp: { header: 1, canBack: 1, title: 'Verify', cta: s.authBusy ? 'Verifying…' : 'Verify and continue', ownCta: 1 },
+      regType: { header: 1, title: 'Account type', sub: 'Step 1 of 3', prog3: 1, step: 'STEP 1 OF 3 · ACCOUNT TYPE', prog: '33%', cta: 'Continue' },
+      regDetails: { header: 1, canBack: 1, title: 'Your details', sub: 'Step 2 of 3', prog3: 2, step: 'STEP 2 OF 3 · DETAILS', prog: '66%', cta: s.authBusy ? 'Creating account…' : 'Continue' },
+      kyc: { header: 1, canBack: 1, title: 'KYC verification', sub: 'Step 3 of 3', prog3: 3, step: 'STEP 3 OF 3 · KYC', prog: '100%', cta: s.kycBusy ? 'Submitting…' : 'Submit for review' },
+      kycDoc: { header: 1, canBack: 1, title: 'Upload document', sub: 'Document ' + (kycPos + 1) + ' of ' + Math.max(1, kycIds.length), cta: s.kycUploading ? 'Uploading…' : s.kyc[s.kycDocId] ? 'Save and continue' : 'Upload to continue', ctaOpacity: s.kycUploading || !s.kyc[s.kycDocId] ? 0.45 : 1 },
+      kycDone: { cta: s.returnTo ? 'Continue where you left off' : 'Go to home', ownCta: 1 },
+      home: { tabs: 'home' }, cats: { tabs: 'buy', title: 'Buy minerals', cartBtn: 1 },
       minerals: { tabs: 'buy', header: 1, canBack: 1, title: (MB.CATS.find(c => c.id === s.cat) || { name: '' }).name, cartBtn: 1 },
       lots: { tabs: 'buy', header: 1, canBack: 1, title: MB.mineralName(s.mineral), cartBtn: 1 },
-      detail: { header: 1, canBack: 1, title: 'Product details', cartBtn: 1, cta: (MB.product(s.pid) && !productIsSoldOut(MB.product(s.pid)!)) ? 'Add to cart' : 'See other lots' },
-      cart: { header: 1, canBack: 1, title: 'Cart', cta: s.cart.length ? 'Proceed to checkout' : '' },
+      detail: { header: 1, canBack: 1, title: 'Product details', cartBtn: 1, cta: detailP && !detailOff ? (s.cart.some(c => c.pid === detailP.id) ? 'Update cart' : 'Add to cart') : 'See other lots', ctaKind: detailP && !detailOff ? 'primary' : 'ghost', ctaIcon: detailP && !detailOff ? 'cart' : undefined },
+      cart: { header: 1, canBack: 1, title: 'Cart', sub: s.cart.length ? s.cart.length + (s.cart.length === 1 ? ' lot' : ' lots') : '', cta: s.cart.length ? 'Proceed to checkout' : '' },
       checkout: { header: 1, canBack: 1, title: 'Checkout', cta: s.placing ? 'Placing order…' : 'Place order' },
-      placed: { cta: 'Track order', cta2: 'Continue browsing' },
-      orders: { tabs: 'orders', header: 1, title: 'Orders' }, order: { header: 1, canBack: 1, title: s.oid },
+      placed: { cta: 'Track order', cta2: 'Continue browsing', ownCta: 1 },
+      orders: { tabs: 'orders', header: 1, title: 'Orders' }, order: { header: 1, canBack: 1, title: s.oid, sub: ord ? (ord.kind === 'sell' ? 'Sell request' : 'Buy order') : '' },
       quote: { header: 1, canBack: 1, title: 'Quotation', cta: 'Accept quotation', cta2: 'Decline quotation', cta2Fg: '#B42318' },
-      contract: { header: 1, canBack: 1, title: 'E-contract', cta: 'Sign e-contract' },
+      contract: { header: 1, canBack: 1, title: 'E-contract', cta: 'Sign e-contract', ctaIcon: 'file' },
       payInsp: { header: 1, canBack: 1, title: 'Payment details', cta: 'Submit details' },
       sellConfirm: { header: 1, canBack: 1, title: 'Seller confirmation', cta: 'Submit form' },
       report: { header: 1, canBack: 1, title: 'Inspection reports', cta: 'Accept reports', cta2: 'Request clarification', cta2Fg: '#A1620B' },
@@ -236,20 +244,20 @@ export class MBStore {
       cancel: this.cancelMeta(),
       refunds: { header: 1, canBack: 1, title: 'Refunds' },
       receipt: { header: 1, canBack: 1, title: 'Confirm receipt', cta: 'Accept delivery', cta2: 'Raise a discrepancy', cta2Fg: '#B42318' },
-      chat: { header: 1, canBack: 1, title: 'Chat with Mineral Bridge' },
+      chat: { header: 1, canBack: 1, title: 'Chat with Mineral Bridge', sub: ord ? ord.id + ' · ' + MB.titleOf(ord) : '' },
       shipment: { header: 1, canBack: 1, title: 'Shipment tracking' },
-      sellCats: { tabs: 'sell', header: 1, title: 'Sell minerals' },
-      sellForm: { header: 1, canBack: 1, title: 'Sell ' + MB.mineralName(s.draft.mineral || 'gold'), cta: s.placing ? 'Submitting…' : 'Submit sell request', cta2: 'Save draft', cta2Fg: '#121214' },
-      sellDone: { cta: 'Track request', cta2: 'Back to home' },
+      sellCats: { tabs: 'sell', title: 'Sell minerals' },
+      sellForm: { header: 1, canBack: 1, title: 'Sell ' + MB.mineralName(s.draft.mineral || 'gold'), sub: (MB.catOf(s.draft.mineral || 'gold') || { name: '' }).name, cta: s.placing ? 'Submitting…' : 'Submit sell request', cta2: 'Save draft', cta2Fg: '#0E1A33' },
+      sellDone: { cta: 'Track request', cta2: 'Back to home', ownCta: 1 },
       profile: { tabs: 'profile', header: 1, title: 'Profile' },
       editProfile: { header: 1, canBack: 1, title: 'Edit profile', cta: 'Save changes' },
       bizType: { header: 1, canBack: 1, title: 'Account type', cta: 'Save' },
       kycStatus: { header: 1, canBack: 1, title: 'KYC & documents', cta: u && u.kyc === 'none' ? 'Start verification' : '' },
-      notifs: { tabs: '', header: 1, canBack: 1, title: 'Notifications' }, prefs: { header: 1, canBack: 1, title: 'Notification channels' },
+      notifs: { tabs: '', header: 1, canBack: 1, title: 'Notifications', readAll: s.unread > 0 || s.notifs.some(n => !n.read) ? 1 : 0 }, prefs: { header: 1, canBack: 1, title: 'Notification channels' },
       help: { header: 1, canBack: 1, title: 'Help & support' },
       auctions: { header: 1, canBack: 1, title: 'Auctions' },
-      auction: Object.assign({ header: 1, canBack: 1, title: 'Auction' }, this.aucCta()),
-      auctionWon: { cta: this.aucWonCta(), cta2: 'Back to auctions' },
+      auction: Object.assign({ header: 1, canBack: 1, title: 'Auction', sub: s.aid, ctaIcon: (this.aucOf() || { status: '' }).status === 'live' ? 'gavel' : undefined }, this.aucCta()),
+      auctionWon: { cta: this.aucWonCta(), cta2: 'Back to auctions', ownCta: 1 },
       doc: { header: 1, canBack: 1, title: 'Document', cta: 'Download', cta2: 'Share' },
       contactOtp: { header: 1, canBack: 1, title: s.contact && s.contact.field === 'email' ? 'Verify new email' : 'Verify new number', cta: s.contactBusy ? 'Verifying…' : 'Verify and save' },
       priceVar: this.varMeta(),
@@ -328,7 +336,7 @@ export class MBStore {
       auctionWon: () => this.auctionToOrder(s.aid, true),
       doc: () => this.downloadDoc(),
       kycDoc: () => { if (s.kycUploading) return; if (!s.kyc[s.kycDocId]) return this.setState({ kycDocErr: 'Upload a photo or file first' }); this.flash('Document saved'); this.nextKycDoc(); },
-      detail: () => { const p = MB.product(s.pid); if (p && productIsSoldOut(p)) return this.go('lots', { mineral: p.mineral, fform: 'All', labOnly: false, search: '' }); this.addToCart(); },
+      detail: () => { const p = MB.product(s.pid); if (p && productIsSoldOut(p)) return this.jump('cats', { cat: (MB.catOf(p.mineral) || { id: '' }).id, search: MB.mineralName(p.mineral) }); this.addToCart(); },
       cart: () => { if (!s.cart.length) return; if (!this.gate('checkout')) return; this.prefillShip(); this.go('checkout'); },
       checkout: () => this.placeOrder(),
       placed: () => { this.setState({ stack: ['orders'], screen: 'order' }); this.top(); },
@@ -605,7 +613,7 @@ export class MBStore {
     if (a.status === 'ended') {
       if (a.result === 'won') return this.aucUnpaid(a) ? this.auctionToOrder(a.id, true) : this.go('order', { oid: a.orderId });
       const p = MB.product(a.pid);
-      return this.jump('lots', { mineral: p ? p.mineral : 'gold', fform: 'All', labOnly: false, search: '' });
+      return this.jump('cats', { cat: '', search: p ? MB.mineralName(p.mineral) : '' });
     }
     if (!this.gate('auction')) return;
     const amt = Math.round(parseFloat(String(s.bidAmt).replace(/[^\d.]/g, ''))), min = this.aucMin(a), inc = this.aucInc(a);

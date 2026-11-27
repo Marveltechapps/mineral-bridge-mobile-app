@@ -2,10 +2,11 @@ appId: com.mineralbridge
 ---
 - launchApp
 - extendedWaitUntil:
-    visible: "Buy and sell minerals, verified at every step."
+    visible: "Skip"
     timeout: 60000
 - takeScreenshot: welcome
-- tapOn: "Browse as guest"
+- tapOn: "Skip"
+- tapOn: "Skip · Browse as guest"
 - extendedWaitUntil:
     visible: "Iso Gold Dore"
     timeout: 30000

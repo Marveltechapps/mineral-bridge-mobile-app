@@ -1,77 +1,60 @@
 import React from 'react';
-import { Image, StyleSheet, View } from 'react-native';
+import { StyleSheet, TextInput, View } from 'react-native';
 import { useStore } from '../../context/AppStore';
-import { Card, Chevron, SearchBar } from '../../components/ui/Blocks';
-import { FadeUp } from '../../components/ui/Motion';
-import { Tap } from '../../components/ui/Tap';
-import { Label, Txt } from '../../components/ui/Txt';
-import { imgFor } from '../../lib/images';
-import { CATS, mineralName, PRODUCTS } from '../../lib/mb4';
-import { colors as c } from '../../theme';
+import { Ic, jakarta, T } from '../../components/mb/base';
+import { Chip, ChipRow, Empty, Grid2, IconBtn, Press } from '../../components/mb/kit';
+import { CATS, catOf, mineralName, PRODUCTS } from '../../lib/mb4';
+import { D } from '../../theme';
 import { CatalogueState } from './CatalogueState';
-import { lotCard } from './lotCard';
+import { byAvailable, ProductCard } from './productCard';
 
-export function CategoriesScreen() {
-  const store = useStore(), s = store.state;
-  const q = s.search.trim().toLowerCase();
-  const global = q ? PRODUCTS.filter(x => (x.name + ' ' + mineralName(x.mineral) + ' ' + x.form).toLowerCase().includes(q)).slice(0, 12).map(x => lotCard(store, x)) : [];
+/** Search field of the Buy / Sell tops. */
+export function SearchBox({ value, onChange, placeholder, label }: { value: string; onChange: (t: string) => void; placeholder: string; label: string }) {
   return (
-    <FadeUp style={{ paddingHorizontal: 18, paddingBottom: 24 }}>
-      <SearchBar value={s.search} onChangeText={t => store.setState({ search: t })} onClear={() => store.setState({ search: '' })} placeholder="Search all minerals and lots" />
-      {global.length ? (
-        <>
-          <Label style={{ marginTop: 18, marginHorizontal: 4, marginBottom: 8 }}>RESULTS</Label>
-          <View style={{ gap: 8 }}>
-            {global.map(x => (
-              <Tap key={x.id} scale={0.985} onPress={x.tap} style={{ opacity: x.opacity }}>
-                <Card style={st.result}>
-                  <Image source={x.img} style={st.resultImg} />
-                  <View style={{ flex: 1, minWidth: 0, paddingTop: 2, paddingHorizontal: 2 }}>
-                    <Txt mono s={10} ls={0.4} c={c.muted2}>{x.id}</Txt>
-                    <Txt s={14.5} w={600} lh={1.3} lines={1} style={{ marginTop: 2 }}>{x.name}</Txt>
-                    <Txt s={12.5} w={500} c={c.ink2} style={{ marginTop: 4 }}>{x.qty}</Txt>
-                    <Txt s={12} c={c.muted} style={{ marginTop: 2 }}>{x.origin}</Txt>
-                    <View style={[st.lab, { backgroundColor: x.labBg }]}><Txt s={11} w={600} lh={1.4} c={x.labFg} lines={1}>{x.grade} · {x.lab}</Txt></View>
-                  </View>
-                </Card>
-              </Tap>
-            ))}
-          </View>
-        </>
-      ) : null}
-      {q && !global.length ? (
-        <Card style={{ marginTop: 18, padding: 22, alignItems: 'center' }}>
-          <Txt s={15} w={600} center>No minerals match “{s.search}”</Txt>
-          <Txt s={13} c={c.muted} center style={{ marginTop: 6 }}>Try a mineral name such as gold, copper or lithium.</Txt>
-          <Tap onPress={() => store.setState({ search: '' })} style={{ marginTop: 14 }}><Txt s={13.5} w={600} c={c.goldInk}>Clear search</Txt></Tap>
-        </Card>
-      ) : null}
-      {!q && !CATS.length ? <CatalogueState what="minerals" /> : null}
-      {!q && CATS.length ? (
-        <View style={{ gap: 10, marginTop: 14 }}>
-          {CATS.map(cat => (
-            <Tap key={cat.id} scale={0.985} onPress={() => store.go('minerals', { cat: cat.id, search: '' })}>
-              <Card style={st.cat}>
-                <Image source={imgFor(cat.img)} style={st.catImg} />
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Txt s={15} w={600}>{cat.name}</Txt>
-                  <Txt s={12} c={c.muted} lh={1.4} style={{ marginTop: 3 }}>{cat.minerals.map(m => m[1]).join(' · ')}</Txt>
-                  <Txt mono s={11} c={c.goldInk} style={{ marginTop: 5 }}>{PRODUCTS.filter(x => cat.minerals.some(([m]) => m === x.mineral)).length + ' lots'}</Txt>
-                </View>
-                <Chevron />
-              </Card>
-            </Tap>
-          ))}
-        </View>
-      ) : null}
-    </FadeUp>
+    <View style={st.search}>
+      <Ic name="search" s={18} c={D.MUT} />
+      <TextInput accessibilityLabel={label} value={value} onChangeText={onChange} placeholder={placeholder} placeholderTextColor={D.placeholder} allowFontScaling={false}
+        autoCorrect={false} style={[st.searchIn, { fontFamily: jakarta(600) }]} />
+      {value ? <Press label="Clear" onPress={() => onChange('')}><Ic name="x" s={16} c={D.MUT} /></Press> : null}
+    </View>
+  );
+}
+
+/** Sticky top of the Buy tab: title + cart, search and category chips. */
+export function BuyTop() {
+  const store = useStore(), s = store.state;
+  const chips: [string, string][] = [['', 'All'], ...CATS.map(c => [c.id, c.name] as [string, string])];
+  return (
+    <View style={{ backgroundColor: 'rgba(244,242,237,.95)', paddingTop: 6, paddingHorizontal: 16, paddingBottom: 10, zIndex: 15 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <T s={20} w={800} accessibilityRole="header">Buy minerals</T>
+        <IconBtn icon="cart" label="Cart" badge={s.cart.length} onPress={() => store.go('cart')} />
+      </View>
+      <SearchBox value={s.search} onChange={t => store.setState({ search: t })} placeholder="Search gold, cobalt, Nigeria…" label="Search minerals" />
+      <ChipRow style={{ marginTop: 10 }}>
+        {chips.map(([id, l]) => <Chip key={id || 'all'} label={l} on={(s.cat || '') === id} pad={[7, 13]} s={12} off={D.MUT} role="tab" onPress={() => store.setState({ cat: id })} />)}
+      </ChipRow>
+    </View>
+  );
+}
+
+/** Buy tab (`scr_buy`): every lot as a two-column grid, filtered by category chip and search. */
+export function CategoriesScreen() {
+  const store = useStore(), s = store.state, q = s.search.trim().toLowerCase();
+  let list = PRODUCTS.filter(x => !s.cat || (catOf(x.mineral) || { id: '' }).id === s.cat);
+  if (q) list = list.filter(x => (x.name + ' ' + mineralName(x.mineral) + ' ' + x.form + ' ' + x.origin + ' ' + x.grade).toLowerCase().includes(q));
+  list = [...list].sort(byAvailable);
+  if (!PRODUCTS.length) return <View style={{ paddingTop: 6, paddingHorizontal: 16, paddingBottom: 26 }}><CatalogueState what="lots" /></View>;
+  return (
+    <View style={{ paddingTop: 6, paddingHorizontal: 16, paddingBottom: 26 }}>
+      <T s={12} w={700} c={D.MUT} style={{ marginTop: 4, marginHorizontal: 2, marginBottom: 10 }}>{list.length + (list.length === 1 ? ' lot' : ' lots')}</T>
+      {list.length ? <Grid2>{list.map(p => <ProductCard key={p.id} store={store} p={p} />)}</Grid2>
+        : <Empty icon="search" title="No lots found" msg="Try another mineral, form or country." cta="Clear search" onCta={() => store.setState({ search: '', cat: '' })} />}
+    </View>
   );
 }
 
 const st = StyleSheet.create({
-  result: { padding: 10, flexDirection: 'row', gap: 12 },
-  resultImg: { width: 86, height: 86, borderRadius: 14 },
-  lab: { alignSelf: 'flex-start', maxWidth: '100%', marginTop: 7, paddingVertical: 3, paddingHorizontal: 9, borderRadius: 99 },
-  cat: { padding: 10, flexDirection: 'row', gap: 13, alignItems: 'center' },
-  catImg: { width: 72, height: 72, borderRadius: 14 },
+  search: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: D.white, borderWidth: 1, borderColor: D.BOR, borderRadius: 14, paddingHorizontal: 14, marginTop: 10 },
+  searchIn: { flex: 1, minWidth: 0, height: 44, fontSize: 14.5, color: D.INK, paddingVertical: 0 },
 });

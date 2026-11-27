@@ -2,69 +2,74 @@ import React from 'react';
 import { View } from 'react-native';
 import { useStore } from '../../context/AppStore';
 import { KYC_INFO } from '../../context/store';
-import { DemoBox, ListCard, SoftBtn } from '../../components/ui/Blocks';
-import { FadeUp } from '../../components/ui/Motion';
-import { Tap } from '../../components/ui/Tap';
-import { Label, Txt } from '../../components/ui/Txt';
+import { T } from '../../components/mb/base';
+import { Btn, Card, DemoBox, IconTile, Note, Press, Row, Section } from '../../components/mb/kit';
 import * as MB from '../../lib/mb4';
-import { colors as c } from '../../theme';
+import { D } from '../../theme';
 import type { KycDocId } from '../../types/mineralBridge';
 import { kycDemo } from '../onboarding/kycDemo';
+import { NavyCard } from '../orders/OrderTrackingScreen';
 import { kycWordOf } from './ProfileScreen';
 
+/** KYC & documents (`scr_kycStatus`). "Start verification" is the screen CTA when nothing was submitted. */
 export function KycStatusScreen() {
   const store = useStore(), s = store.state, u = s.user, k = s.kyc;
   const demo = kycDemo(store);
   const ids = (['front', 'back', 'selfie', 'address', 'biz'] as KycDocId[]).filter(id => id !== 'back' || k.idType !== 'Passport').filter(id => id !== 'biz' || store.bizDocNeeded());
   const editable = !!u && (u.kyc === 'rejected' || u.kyc === 'none');
   const base = u && u.kyc === 'verified' ? 'Verified' : u && u.kyc === 'pending' ? 'Received' : '';
+  const dot = u && u.kyc === 'verified' ? '#4ADE80' : u && u.kyc === 'pending' ? D.GOLD : '#F87171';
   return (
-    <FadeUp style={{ paddingHorizontal: 18, paddingBottom: 24 }}>
-      <View style={{ padding: 18, borderRadius: 22, backgroundColor: c.ink }}>
-        <Label c={c.faint}>{u ? u.kycRef || '—' : ''}</Label>
-        <Txt serif s={28} c={c.paper} style={{ marginTop: 6 }}>{u ? kycWordOf(u.kyc) : ''}</Txt>
-        <Txt s={12.5} c={c.soft} style={{ marginTop: 4 }}>Submitted {u && u.kycAt ? MB.fmt(u.kycAt) : '—'}</Txt>
-      </View>
+    <View style={{ paddingTop: 14, paddingHorizontal: 18, paddingBottom: u && u.kyc === 'none' ? 0 : 24 }}>
+      <NavyCard>
+        <T s={11.5} w={800} c={D.GOLD}>{u ? u.kycRef || '—' : '—'}</T>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
+          <T s={20} w={800} c={D.white}>{u ? kycWordOf(u.kyc) : ''}</T>
+          <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: dot }} />
+        </View>
+        <T s={12} w={600} c={D.navyFaint} style={{ marginTop: 4 }}>{'Submitted ' + (u && u.kycAt ? MB.fmt(u.kycAt) : '—')}</T>
+      </NavyCard>
       {u && u.kyc === 'rejected' ? (
         <>
-          <View accessibilityRole="alert" style={{ marginTop: 12, paddingVertical: 13, paddingHorizontal: 15, borderRadius: 16, backgroundColor: c.redBg }}>
-            <Txt s={13} c={c.red} lh={1.5}><Txt s={13} w={700} c={c.red}>Action needed.</Txt> {u.kycReason || ''}</Txt>
+          <View accessibilityRole="alert" style={{ marginTop: 12, paddingVertical: 11, paddingHorizontal: 14, borderRadius: 13, backgroundColor: D.dangerBg }}>
+            <T s={12.5} w={600} c={D.DANGER} lh={1.45}><T s={12.5} w={700} c={D.DANGER}>Action needed. </T>{u.kycReason || 'Compliance asked you to re-upload documents. Replace them and resubmit.'}</T>
           </View>
-          <Tap onPress={() => store.go('kyc')} style={{ marginTop: 8, height: 50, borderRadius: 16, backgroundColor: c.ink, alignItems: 'center', justifyContent: 'center' }}><Txt s={14} w={600} c={c.paper}>Upload a new document</Txt></Tap>
+          <View style={{ marginTop: 8 }}><Btn label="Upload a new document" size="sm" onPress={() => store.go('kyc')} /></View>
         </>
       ) : null}
-      {u && u.kyc === 'none' ? <View style={{ marginTop: 12, paddingVertical: 13, paddingHorizontal: 15, borderRadius: 16, backgroundColor: c.amberBg }}><Txt s={13} c={c.amberInk} lh={1.5}>You can browse now. Verification is needed before you buy or sell.</Txt></View> : null}
-      <Label style={{ marginTop: 20, marginHorizontal: 4, marginBottom: 8 }}>DOCUMENTS</Label>
-      <ListCard>
-        {ids.map(id => {
+      {u && u.kyc === 'none' ? <Note mt={12}>You can browse now. Verification is needed before you buy or sell.</Note> : null}
+      <Section t="Documents" />
+      <Card>
+        {ids.map((id, i) => {
           const f = k[id], fl = store.kycFlag(id), done = !!(u && u.kycFlags && u.kycFlags[id]) && !fl;
           const n = id === 'front' ? (k.idType === 'Passport' ? 'Passport photo page' : k.idType + ' · front') : id === 'back' ? k.idType + ' · back' : KYC_INFO[id].title;
           const v = fl ? 'Re-upload requested' : done ? 'Replaced · ready to resubmit' : f ? (base || 'Uploaded') + ' · ' + f.name : base || 'Not uploaded';
-          const fg = fl ? c.red : done ? c.green : base === 'Verified' ? c.green : (f || base) ? c.ink : c.muted2;
+          const fg = fl ? D.DANGER : done || base === 'Verified' ? D.green : (f || base) ? D.INK : D.MUT;
           return (
-            <View key={id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.hair }}>
+            <Row key={id} last={i === ids.length - 1} pv={12}>
+              <IconTile icon={KYC_INFO[id].icon} c={D.GD} s={17} w={1.8} />
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Txt s={13.5} c={c.muted}>{n}</Txt>
-                <Txt s={13.5} w={600} c={fg} style={{ marginTop: 2 }}>{v}</Txt>
-                {fl ? <Txt s={12} c={c.red} lh={1.4} style={{ marginTop: 3 }}>{fl}</Txt> : null}
+                <T s={13.5} w={800}>{n}</T>
+                <T s={11.5} w={700} c={fg} lines={1} style={{ marginTop: 1 }}>{v}</T>
+                {fl ? <T s={11.5} w={600} c={D.DANGER} lh={1.35} style={{ marginTop: 2 }}>{fl}</T> : null}
               </View>
               {editable || fl ? (
-                <Tap onPress={() => store.go('kycDoc', { kycDocId: id, kycDocErr: '' })} style={{ height: 34, paddingHorizontal: 13, borderRadius: 11, justifyContent: 'center', backgroundColor: fl ? c.ink : c.white, borderWidth: 1, borderColor: fl ? c.ink : c.line }}>
-                  <Txt s={12.5} w={600} c={fl ? c.paper : c.ink}>{fl ? 'Re-upload' : f ? 'Replace' : 'Upload'}</Txt>
-                </Tap>
+                <Press onPress={() => store.go('kycDoc', { kycDocId: id, kycDocErr: '' })} style={{ paddingVertical: 7, paddingHorizontal: 11, borderRadius: 10, backgroundColor: fl ? D.G : D.white, borderWidth: 1, borderColor: fl ? D.G : D.BOR }}>
+                  <T s={12} w={800} c={fl ? D.GOLD : D.INK}>{fl ? 'Re-upload' : f ? 'Replace' : 'Upload'}</T>
+                </Press>
               ) : null}
-            </View>
+            </Row>
           );
         })}
-      </ListCard>
+      </Card>
       {__DEV__ && u && u.kyc === 'pending' ? (
-        <DemoBox title="DEV ONLY · LOCAL KYC DECISION (NOT SENT TO THE SERVER)" r={16} pad={14} style={{ marginTop: 14 }}>
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
-            <SoftBtn label="Approve" bg={c.greenBg} fg={c.green} onPress={demo.approve} style={{ flex: 1 }} />
-            <SoftBtn label="Ask for document" bg={c.redBg} fg={c.red} onPress={demo.reject} style={{ flex: 1 }} />
+        <DemoBox title="DEMO · SIMULATE COMPLIANCE DECISION" style={{ marginTop: 14 }}>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <View style={{ flex: 1 }}><Btn label="Approve" kind="subtle" size="sm" onPress={demo.approve} /></View>
+            <View style={{ flex: 1 }}><Btn label="Ask for document" kind="danger" size="sm" onPress={demo.reject} /></View>
           </View>
         </DemoBox>
       ) : null}
-    </FadeUp>
+    </View>
   );
 }

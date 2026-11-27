@@ -1,117 +1,89 @@
 import React from 'react';
-import { Image, ScrollView, StyleSheet, View } from 'react-native';
-import type { ImageSourcePropType } from 'react-native';
+import { View } from 'react-native';
 import { useStore } from '../../context/AppStore';
 import { UF, UNAME } from '../../context/store';
-import { Card, DocList, ErrBox, Field, KV, ListCard } from '../../components/ui/Blocks';
-import { FadeUp } from '../../components/ui/Motion';
-import { Tap } from '../../components/ui/Tap';
-import { Label, Txt } from '../../components/ui/Txt';
-import { imgFor } from '../../lib/images';
+import { Ic, T } from '../../components/mb/base';
+import { imBg, ImFill, prodIm } from '../../components/mb/art';
+import { Alert, Card, DocLine, FLabel, Input, KV, Note, Press, Section } from '../../components/mb/kit';
 import { mineralName, num, product } from '../../lib/mb4';
 import { productHasLotDocuments, productIsSoldOut } from '../../lib/mappers';
-import { colors as c } from '../../theme';
+import { D } from '../../theme';
 import { CatalogueState } from './CatalogueState';
 import { lotLine } from './lotCard';
 
-/** CSS background positioning: size = 'cover' or a % of the box width, position as fractions. */
-function Bg({ source, w, h, size = 'cover', px = 0.5, py = 0.5, flip }: { source: ImageSourcePropType; w: number; h: number; size?: 'cover' | number; px?: number; py?: number; flip?: boolean }) {
-  const meta = Image.resolveAssetSource(source);
-  const ar = meta && meta.width && meta.height ? meta.width / meta.height : 1.2;
-  let iw: number, ih: number;
-  if (size !== 'cover') { iw = w * size; ih = iw / ar; } else if (w / h > ar) { iw = w; ih = w / ar; } else { ih = h; iw = h * ar; }
-  return (
-    <View style={{ width: w, height: h, borderRadius: 24, overflow: 'hidden', transform: flip ? [{ scaleX: -1 }] : undefined }}>
-      <Image source={source} style={{ position: 'absolute', width: iw, height: ih, left: (w - iw) * px, top: (h - ih) * py }} />
-    </View>
-  );
-}
+const nf = (v: number) => num(+v.toFixed(4), 4);
 
+/** Product details (`scr_detail`). Add to cart / See other lots is the screen CTA (store.primary). */
 export function ProductDetailScreen() {
   const store = useStore(), s = store.state;
   const p = product(s.pid);
-  if (!p) return <FadeUp style={{ paddingHorizontal: 18, paddingBottom: 24 }}><CatalogueState what="this lot" /></FadeUp>;
-  const img = imgFor(p.img), pu = p.unit, u = store.unitOf(p), can = !!UF[pu];
-  const nf = (v: number) => num(+v.toFixed(6)), q = parseFloat(s.qty);
-  const inCart = s.cart.find(x => x.pid === p.id);
-  const docs = productHasLotDocuments(p) ? ([['Test report', p.lab + ' · ' + p.cert + '-TR.pdf'], ['Certificate of analysis', p.cert + '.pdf'], ['Origin declaration', 'Mine of origin · ' + p.origin.split(' · ')[0]]] as const).map(([n, f], i) => {
+  if (!p) return <View style={{ paddingHorizontal: 18 }}><CatalogueState what="this lot" /></View>;
+  const im = prodIm(p), u = store.unitOf(p), off = productIsSoldOut(p), c = s.cart.find(x => x.pid === p.id);
+  const qn = parseFloat(s.qty), eq = UF[p.unit] && u !== p.unit && qn > 0 ? '= ' + nf(store.conv(qn, u, p.unit)) + ' ' + p.unit : '';
+  const hasDocs = productHasLotDocuments(p);
+  const docs = hasDocs ? ([['Test report', (p.lab || 'Laboratory') + (p.cert ? ' · ' + p.cert + '-TR.pdf' : '')], ['Certificate of analysis', (p.cert || p.id) + '.pdf'], ['Origin declaration', 'Mine of origin · ' + String(p.origin || '').split(' · ')[0]]] as const).map(([n, f], i) => {
     const t = ['lotReport', 'lotCoa', 'lotOrigin'][i], type = (['lot_test_report', 'certificate_of_analysis', 'origin_declaration'] as const)[i];
-    // The API serves the real file (signed URL); lots without one keep the on-device document view.
-    return { n, f, tap: () => store.openProductDoc(p, type, t), dl: () => store.openProductDoc(p, type, t, true) };
+    return { n, f, tap: () => store.openProductDoc(p, type, t) };
   }) : [];
-  const minShown = can ? nf(store.conv(p.min, pu, u)) + ' ' + u : p.min + ' ' + pu;
-  const maxShown = can ? nf(store.conv(p.avail, pu, u)) + ' ' + u : p.avail + ' ' + pu;
-  const equiv = can && q > 0 ? '= ' + ['g', 'kg', 't'].filter(k => k !== u).map(k => nf(store.conv(q, u, k)) + ' ' + k).join(' = ') : '';
-
+  const full = im.kind === 'photo' && !im.bars;
   return (
-    <FadeUp style={{ paddingHorizontal: 18, paddingBottom: 24 }}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} snapToInterval={308} decelerationRate="fast" style={{ marginHorizontal: -18 }} contentContainerStyle={{ gap: 8, paddingHorizontal: 18 }}>
-        <Bg source={img} w={300} h={220} />
-        <Bg source={img} w={300} h={220} px={0.3} py={0.7} flip />
-        <Bg source={img} w={300} h={220} size={1.8} />
-      </ScrollView>
-      <View style={{ paddingTop: 16, paddingHorizontal: 4 }}>
-        <Label>{mineralName(p.mineral)} · {p.form} · {p.id}</Label>
-        <Txt serif s={30} lh={1.05} style={{ marginTop: 6 }}>{p.name}</Txt>
-        <Txt s={13} c={c.muted} style={{ marginTop: 6 }}>{p.origin}</Txt>
-      </View>
-      {productIsSoldOut(p) ? <View accessibilityRole="alert" style={st.off}><Txt s={13.5} w={600} c={c.red}>This lot is sold out. Choose another lot of {mineralName(p.mineral)}.</Txt></View> : null}
-      <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
-        <Card r={18} style={st.tile}><Label>AVAILABLE</Label><Txt s={16} w={600} style={{ marginTop: 6 }}>{lotLine(p)}</Txt></Card>
-        <Card r={18} style={st.tile}><Label>PURITY</Label>{p.lab ? <Txt s={16} w={600} style={{ marginTop: 6 }}>{p.grade}</Txt> : <Txt s={13.5} w={600} c={c.muted} style={{ marginTop: 6 }}>On request</Txt>}</Card>
-      </View>
-      {productHasLotDocuments(p) ? (
-        <>
-          <Label style={st.sec}>TESTING & CERTIFICATION</Label>
-          <ListCard>
-            <KV k="Testing company" v={p.lab} gap={12} />
-            <KV k="Certificate no." v={p.cert} mono gap={12} line={false} />
-          </ListCard>
-          <Label style={st.sec}>TEST REPORTS & CERTIFICATES</Label>
-          <DocList docs={docs} />
-        </>
-      ) : (
-        <View style={st.noLab}><Txt s={13} c={c.ink2} lh={1.5}>No third-party test report for this lot yet. Ask Mineral Bridge for quality details before you order.</Txt></View>
-      )}
-      {!productIsSoldOut(p) ? (
-        <>
-          <Label style={st.sec}>QUANTITY TO ORDER</Label>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <View style={{ flex: 1 }}><Field accessibilityLabel="Quantity" keyboard="decimal-pad" value={s.qty} onChangeText={t => store.setState({ qty: t.replace(/[^\d.]/g, ''), qtyErr: '' })} /></View>
-            {!can ? <View style={st.unit}><Txt mono s={14} c={c.paper}>{p.unit}</Txt></View> : null}
+    <View style={{ paddingTop: 12, paddingHorizontal: 18 }}>
+      <View style={{ height: 230, borderRadius: 24, overflow: 'hidden', backgroundColor: imBg(im), alignItems: 'center', justifyContent: 'center', boxShadow: '0 16px 30px -20px rgba(14,26,51,.5)' }}>
+        <ImFill im={im} inset={full ? 1 : 0.72} />
+        {p.lab ? (
+          <View style={{ position: 'absolute', left: 12, top: 12, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: D.G, paddingVertical: 5, paddingHorizontal: 9, borderRadius: 9 }}>
+            <Ic name="flask" s={12} c={D.GOLD} w={2.4} /><T s={10.5} w={800} c={D.GOLD}>LAB-TESTED</T>
           </View>
-          {can ? (
-            <>
-              <View accessibilityRole="radiogroup" accessibilityLabel="Unit" style={st.units}>
-                {['g', 'kg', 't'].map(k => {
-                  const on = u === k;
-                  return (
-                    <Tap key={k} role="radio" selected={on} style={[st.unitBtn, { backgroundColor: on ? c.ink : 'transparent' }]}
-                      onPress={() => { if (k === u) return; const v = parseFloat(s.qty); store.setState({ qu: { pid: p.id, u: k }, qty: v > 0 ? String(store.conv(v, u, k)) : s.qty, qtyErr: '' }); }}>
-                      <Txt s={13} w={600} c={on ? c.paper : c.muted}>{UNAME[k]}</Txt>
-                      <Txt mono s={9.5} c={on ? c.paper : c.muted} style={{ opacity: 0.7 }}>{k}</Txt>
-                    </Tap>
-                  );
-                })}
-              </View>
-              {equiv ? <Txt mono s={12} c={c.ink2} style={{ marginTop: 8, marginHorizontal: 4 }}>{equiv}</Txt> : null}
-            </>
+        ) : null}
+      </View>
+      <T s={11.5} w={800} c={D.GD} style={{ marginTop: 16 }}>{[mineralName(p.mineral), p.form, p.id].filter(Boolean).join(' · ')}</T>
+      <T s={24} w={800} ls={-0.02} style={{ marginTop: 3 }}>{p.name}</T>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4 }}>
+        <Ic name="pin" s={14} c={D.MUT} /><T s={13} w={600} c={D.MUT} style={{ flexShrink: 1 }}>{p.origin}</T>
+      </View>
+      {off ? <Alert msg={'This lot is sold out. Choose another lot of ' + mineralName(p.mineral) + '.'} /> : null}
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
+        {([['Available', lotLine(p)], ['Purity', p.lab ? p.grade : 'On request']] as const).map(([k, v]) => (
+          <View key={k} style={{ flex: 1, backgroundColor: D.white, borderWidth: 1, borderColor: D.BOR, borderRadius: 16, padding: 12 }}>
+            <T s={11.5} w={700} c={D.MUT}>{k}</T>
+            <T s={15} w={800} style={{ marginTop: 3 }}>{v}</T>
+          </View>
+        ))}
+      </View>
+      {hasDocs ? (
+        <>
+          <Section t="Testing & certification" />
+          <KV rows={[['Testing company', p.lab || '—'], ['Certificate no.', p.cert || '—']]} />
+          <Section t="Test reports & certificates" />
+          <Card>{docs.map((d, i) => <DocLine key={d.n} n={d.n} f={d.f} onPress={d.tap} last={i === docs.length - 1} />)}</Card>
+        </>
+      ) : <Note>No third-party test report for this lot yet. Ask Mineral Bridge for quality details before you order.</Note>}
+      {!off ? (
+        <>
+          <FLabel t="Quantity to order" mt={18} />
+          <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+            <Input wrap={{ flex: 1 }} accessibilityLabel="Quantity" keyboard="decimal-pad" value={s.qty} onChangeText={t => store.setState({ qty: t.replace(/[^\d.]/g, ''), qtyErr: '' })} />
+            {!UF[p.unit] ? <T s={14} w={800} c={D.MUT}>{p.unit}</T> : null}
+          </View>
+          {UF[p.unit] ? (
+            <View accessibilityRole="radiogroup" accessibilityLabel="Unit" style={{ flexDirection: 'row', gap: 6, marginTop: 8 }}>
+              {['g', 'kg', 't'].map(k => {
+                const on = u === k;
+                return (
+                  <Press key={k} role="radio" selected={on} onPress={() => { if (on) return; const v = parseFloat(s.qty) || 0; store.setState({ qu: { pid: p.id, u: k }, qty: String(+store.conv(v, u, k).toFixed(4) || ''), qtyErr: '' }); }}
+                    style={{ flex: 1, paddingVertical: 9, borderRadius: 12, alignItems: 'center', backgroundColor: on ? D.G : D.white, borderWidth: 1, borderColor: on ? D.G : D.BOR }}>
+                    <T s={12.5} w={800} c={on ? D.white : D.INK}>{UNAME[k] + ' · ' + k}</T>
+                  </Press>
+                );
+              })}
+            </View>
           ) : null}
-          <Txt s={12} c={c.muted} style={{ marginTop: 7, marginHorizontal: 4 }}>Minimum order {minShown} · up to {maxShown} · price is confirmed by quotation</Txt>
-          {inCart ? <Txt s={12} w={600} c={c.goldInk} style={{ marginTop: 5, marginHorizontal: 4 }}>{'In your cart: ' + (inCart.uIn ? inCart.qIn + ' ' + inCart.uIn : inCart.qty + ' ' + p.unit)}</Txt> : null}
-          {s.qtyErr ? <ErrBox>{s.qtyErr}</ErrBox> : null}
+          {eq ? <T s={12} w={700} c={D.GD} style={{ marginTop: 6 }}>{eq}</T> : null}
+          <T s={12} w={600} c={D.MUT} lh={1.45} style={{ marginTop: 8 }}>{'Minimum order ' + nf(store.conv(p.min, p.unit, u)) + ' ' + u + (p.avail > 0 ? ' · up to ' + nf(store.conv(p.avail, p.unit, u)) + ' ' + u : '') + ' · price is confirmed by quotation'}</T>
+          {c ? <T s={12} w={700} c={D.GD} style={{ marginTop: 6 }}>{'Already in your cart: ' + nf(c.qty) + ' ' + p.unit + '. Adding updates the quantity.'}</T> : null}
+          <Alert msg={s.qtyErr} />
         </>
       ) : null}
-    </FadeUp>
+    </View>
   );
 }
-
-const st = StyleSheet.create({
-  off: { marginTop: 14, paddingVertical: 13, paddingHorizontal: 15, borderRadius: 16, backgroundColor: c.redBg },
-  tile: { flex: 1, minWidth: 0, padding: 14 },
-  sec: { marginTop: 20, marginHorizontal: 4, marginBottom: 8 },
-  noLab: { marginTop: 14, paddingVertical: 13, paddingHorizontal: 15, borderRadius: 16, backgroundColor: c.chip },
-  unit: { width: 58, height: 52, borderRadius: 14, backgroundColor: c.ink, alignItems: 'center', justifyContent: 'center' },
-  units: { flexDirection: 'row', gap: 3, padding: 4, borderRadius: 14, backgroundColor: c.track, marginTop: 8 },
-  unitBtn: { flex: 1, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
-});

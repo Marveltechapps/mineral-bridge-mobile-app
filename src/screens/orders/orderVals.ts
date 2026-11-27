@@ -4,7 +4,8 @@ import { RF_STEPS } from '../../context/store';
 import { Linking } from 'react-native';
 import { EMPTY_USER } from '../../context/state';
 import * as MB from '../../lib/mb4';
-import { imgFor } from '../../lib/images';
+import { prodIm } from '../../components/mb/art';
+import type { Im } from '../../components/mb/art';
 import type { Auction, Order, Product } from '../../types/mineralBridge';
 
 const P = (id: string) => MB.product(id) || ({} as Product);
@@ -40,12 +41,12 @@ export function phaseRows(o: Order) {
   const st = MB.stages(o.kind), ph = MB.phases(o.kind), all = !st[o.idx + 1], cur = all ? st[o.idx].phase : st[o.idx + 1].phase;
   return ph.map((l, i) => {
     const d = all || i < cur, a = !all && i === cur;
-    return { l, n: String(i + 1), dot: d ? '#121214' : a ? '#D9B456' : '#fff', dotBorder: d ? '#121214' : a ? '#D9B456' : '#D5D3CC', fg: !d && !a ? '#8B8A90' : '#121214', line: i === ph.length - 1 ? 'transparent' : d ? '#121214' : '#E4E2DB', tag: d ? 'Done' : a ? 'Now' : '' };
+    return { l, n: String(i + 1), done: d, now: a, last: i === ph.length - 1, dot: d ? '#14284B' : a ? '#D9B456' : '#fff', dotBorder: d ? '#14284B' : a ? '#D9B456' : '#D5D3CC', fg: !d && !a ? '#6B6A70' : '#0E1A33', line: d ? '#14284B' : '#E4E2DB', tag: d ? 'Done' : a ? 'Now' : '', tagFg: a ? '#A1620B' : '#17704C' };
   });
 }
 
 export function auditRows(o: Order) {
-  return [...o.log].reverse().map((l, i, arr) => ({ who: l.who, text: l.text, note: l.note, at: MB.fmt(l.at), line: i === arr.length - 1 ? 'transparent' : '#EFEDE7', youBg: l.who === 'You' ? '#121214' : '#F1EFE9', youFg: l.who === 'You' ? '#D9B456' : '#3A3940', ini: l.who === 'You' ? 'YOU' : l.who.startsWith('SGS') ? 'SGS' : l.who.startsWith('Logistics') ? 'LP' : 'MB' }));
+  return [...o.log].reverse().map((l, i, arr) => ({ who: l.who, text: l.text, note: l.note, at: MB.fmt(l.at), last: i === arr.length - 1, youBg: l.who === 'You' ? '#14284B' : '#F6EED8', youFg: l.who === 'You' ? '#D9B456' : '#8A6A1C', ini: l.who === 'You' ? 'YOU' : l.who.startsWith('SGS') ? 'SGS' : l.who.startsWith('Logistics') || l.who.startsWith('Sahel') ? 'LP' : 'MB' }));
 }
 
 export function orderLines(o: Order) {
@@ -61,19 +62,19 @@ export function refundView(o?: Order) {
   return {
     ref: rfo.ref, amount: MB.money(rfo.amount), typeLabel: rfo.type === 'full' ? 'Full refund' : 'Partial refund', reason: rfo.reason, to: rfo.to, statusLabel: t[2], pillBg: t[0], pillFg: t[1],
     declined: rfo.status === 'declined', declineReason: rfo.reason2 || '', showSteps: rfo.status !== 'declined', bankRef: rfo.bankRef || '',
-    steps: RF_STEPS.map(([, l], i) => ({ l, bar: i <= ti ? (rfo.status === 'refunded' ? '#17704C' : '#121214') : '#E4E2DB', fg: i <= ti ? '#121214' : '#8B8A90', w: (i === ti ? 600 : 400) as 400 | 600 })),
+    steps: RF_STEPS.map(([, l], i) => ({ l, bar: i <= ti ? (rfo.status === 'refunded' ? '#17704C' : '#D9B456') : '#E4E2DB', fg: i <= ti ? '#0E1A33' : '#6B6A70', w: (i === ti ? 800 : 600) as 600 | 800 })),
   };
 }
 
 export function shipSteps(o: Order) {
   const ORDER = ['Pickup scheduled', 'Picked up', 'In transit', 'Delivered'];
   const s0 = (o.ship || { status: '' }).status, st = s0 === 'Delivered to vault' ? 'Delivered' : s0, i = ORDER.indexOf(st);
-  return ['Booked', 'Collected', 'In transit', 'Delivered'].map((l, k) => ({ l, bar: k <= i ? '#D9B456' : 'rgba(255,255,255,.14)', fg: k <= i ? '#F4F2ED' : '#9C9AA0' }));
+  return ['Booked', 'Collected', 'In transit', 'Delivered'].map((l, k) => ({ l, bar: k <= i ? '#D9B456' : 'rgba(255,255,255,.14)', fg: k <= i ? '#FFFFFF' : '#9AA3B8' }));
 }
 
 export function aucOrderCard(store: MBStore, a: Auction) {
   const s = store.state, p = P(a.pid), o = a.orderId ? s.orders.find(x => x.id === a.orderId) : undefined, lead = a.bids.length && a.bids[a.bids.length - 1].who === 'You';
-  const base = { id: a.id, title: p.name || a.name || a.id, qtyLine: a.qty + ' ' + (p.unit || a.unit || ''), img: imgFor(p.img || a.imageUrl || 'cat-precious'), tap: () => store.openAuction(a.id) };
+  const base = { id: a.id, title: p.name || a.name || a.id, qtyLine: a.qty + ' ' + (p.unit || a.unit || ''), im: prodIm({ mineral: p.mineral || '', form: p.form || '', img: a.imageUrl || p.img || '' }) as Im, tap: () => store.openAuction(a.id) };
   if (o) { const v = store.view(o); return { ...base, id: a.id + ' · ' + o.id, status: v.status, pillBg: v.pillBg, pillFg: v.pillFg, value: MB.money(store.aucCur(a)), pct: v.pct, next: v.next, tap: () => store.go('order', { oid: o.id }) }; }
   if (a.result === 'won') return { ...base, status: 'Won · pay now', pillBg: '#E2F2E9', pillFg: '#17704C', value: 'Winning bid ' + MB.money(store.aucCur(a)), pct: '20%', next: 'Pay the winning bid to release the lot for dispatch.', tap: () => store.go('auctionWon', { aid: a.id }) };
   if (a.status === 'live') return { ...base, status: lead ? 'Leading' : 'Outbid', pillBg: lead ? '#E2F2E9' : '#FDECEA', pillFg: lead ? '#17704C' : '#B42318', value: 'Current ' + MB.money(store.aucCur(a)), pct: '10%', next: (lead ? 'You are the highest bidder' : 'Another bidder is ahead. Bid again') + ' · ends in ' + store.left(a.endsAt - Date.now()) };
@@ -86,3 +87,9 @@ export function currentOrder(store: MBStore) {
   return store.order() || store.state.orders[0];
 }
 export const signedInUser = (store: MBStore) => store.state.user || EMPTY_USER;
+
+/** Image of an order (first line's lot, or a lot of the mineral being sold). */
+export function orderIm(o: Order): Im {
+  if (o.kind === 'sell' && o.sell) return prodIm(MB.PRODUCTS.find(p => p.mineral === o.sell!.mineral) || { mineral: o.sell.mineral, form: 'Ore', img: '' });
+  return prodIm(MB.product(o.items[0] && o.items[0].pid) || { mineral: '', form: 'Ore', img: '' });
+}

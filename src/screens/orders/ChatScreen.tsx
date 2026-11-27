@@ -2,22 +2,20 @@ import React, { useEffect, useRef } from 'react';
 import { ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from '../../context/AppStore';
-import { Icon, IC } from '../../components/ui/Icon';
-import { FadeUp } from '../../components/ui/Motion';
-import { Tap } from '../../components/ui/Tap';
-import { Txt } from '../../components/ui/Txt';
+import { Ic, jakarta, Rise, T } from '../../components/mb/base';
+import { Empty, Press } from '../../components/mb/kit';
 import * as MB from '../../lib/mb4';
-import { colors as c } from '../../theme';
+import { D } from '../../theme';
 import { currentOrder } from './orderVals';
 
-/** Chat with Mineral Bridge: owns its scroll view and keeps the composer pinned to the bottom. */
+/** Chat with Mineral Bridge (`scr_chat`): quick actions, bubbles, composer pinned to the bottom. */
 export function ChatScreen() {
   const store = useStore(), s = store.state, insets = useSafeAreaInsets();
   const scroll = useRef<ScrollView>(null);
   const o = currentOrder(store);
   const msgs = o ? s.chat[o.id] || [] : [];
   useEffect(() => { const t = setTimeout(() => scroll.current?.scrollToEnd({ animated: true }), 50); return () => clearTimeout(t); }, [msgs.length]);
-  if (!o) return null;
+  if (!o) return <Empty icon="chat" title="No orders to discuss yet" msg="Place an order or a sell request first." />;
   const v = store.view(o);
   const actions = [
     ...(store.refundable(o) ? [{ l: 'Request a refund', tap: () => store.chatRefund(o) }] : []),
@@ -33,48 +31,38 @@ export function ChatScreen() {
     if (/refund|money back|reimburs/i.test(t)) store.chatRefund(o, false, t, false);
   };
   return (
-    <View style={{ flex: 1 }}>
-      <ScrollView ref={scroll} style={{ flex: 1 }} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 18 }}>
-        <FadeUp>
-          <View style={st.ref}><Txt s={12} c={c.ink2}>{o.id + ' · ' + MB.titleOf(o)}</Txt></View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10, marginHorizontal: -18 }} contentContainerStyle={{ gap: 7, paddingHorizontal: 18 }}>
-            {actions.map(q => <Tap key={q.l} onPress={q.tap} style={st.quick}><Txt s={12.5} w={600}>{q.l}</Txt></Tap>)}
-          </ScrollView>
-          <View style={{ gap: 8, marginTop: 12 }}>
-            {msgs.map((m, i) => m.me ? (
-              <View key={i} style={[st.bubble, st.me]}>
-                <Txt s={13.5} lh={1.45} c={c.paper}>{m.text}</Txt>
-                <Txt s={10.5} c={c.faint} style={{ marginTop: 4 }}>You · {MB.fmt(m.at)}</Txt>
-              </View>
-            ) : (
-              <View key={i} style={{ alignItems: 'flex-start', gap: 6 }}>
-                <View style={[st.bubble, st.them]}>
-                  <Txt s={13.5} lh={1.45}>{m.text}</Txt>
-                  <Txt s={10.5} c={c.muted2} style={{ marginTop: 4 }}>{(m.local ? 'Assistant' : 'Mineral Bridge') + ' · ' + MB.fmt(m.at)}</Txt>
-                </View>
-                {m.action === 'refund' && store.refundable(o) ? <Tap onPress={() => store.openRefund(o, { note: m.ctx || '' })} style={st.act}><Txt s={13} w={600} c={c.gold}>Open refund form</Txt></Tap> : null}
-                {m.action === 'trackRefund' ? <Tap onPress={() => store.go('order', { oid: o.id })} style={st.act}><Txt s={13} w={600} c={c.gold}>View refund status</Txt></Tap> : null}
-              </View>
-            ))}
-          </View>
-        </FadeUp>
+    <View style={{ flex: 1, backgroundColor: D.BG }}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={{ gap: 7, paddingTop: 12, paddingHorizontal: 16, paddingBottom: 4 }}>
+        {actions.map(q => <Press key={q.l} onPress={q.tap} style={st.quick}><T s={12.5} w={800}>{q.l}</T></Press>)}
       </ScrollView>
-      <View style={[st.bar, { paddingBottom: Math.max(insets.bottom, 24) + 4 }]}>
-        <TextInput accessibilityLabel="Message" value={s.msg} onChangeText={t => store.setState({ msg: t })} placeholder="Write a message" placeholderTextColor="#8E8D93" onSubmitEditing={send} returnKeyType="send" allowFontScaling={false} style={st.input} />
-        <Tap label="Send" onPress={send} style={st.send}><Icon d={IC.send} size={17} color={c.gold} sw={2} /></Tap>
+      <ScrollView ref={scroll} style={{ flex: 1 }} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingVertical: 10, paddingHorizontal: 16, gap: 10 }}>
+        {msgs.map((m, i) => (
+          <Rise key={i} dur={250} style={{ alignSelf: m.me ? 'flex-end' : 'flex-start', maxWidth: '82%' }}>
+            <View style={[st.bubble, m.me ? st.me : st.them]}>
+              <T s={13.5} w={600} lh={1.45} c={m.me ? D.white : D.INK}>{m.text}</T>
+              <T s={10.5} w={600} c={m.me ? D.navyFaint : D.MUT} style={{ marginTop: 4 }}>{(m.me ? 'You' : m.local ? 'Assistant' : 'Mineral Bridge') + ' · ' + MB.fmt(m.at)}</T>
+            </View>
+            {!m.me && m.action === 'refund' && store.refundable(o) ? <Press onPress={() => store.openRefund(o, { note: m.ctx || '' })} style={st.act}><T s={12.5} w={800} c={D.G}>Open refund form</T></Press> : null}
+            {!m.me && m.action === 'trackRefund' ? <Press onPress={() => store.go('order', { oid: o.id })} style={st.act}><T s={12.5} w={800} c={D.G}>View refund status</T></Press> : null}
+          </Rise>
+        ))}
+      </ScrollView>
+      <View style={[st.bar, { paddingBottom: Math.max(18, insets.bottom) }]}>
+        <TextInput accessibilityLabel="Message" value={s.msg} onChangeText={t => store.setState({ msg: t })} placeholder="Write a message" placeholderTextColor={D.placeholder} onSubmitEditing={send} returnKeyType="send" allowFontScaling={false}
+          style={[st.input, { fontFamily: jakarta(600) }]} />
+        <Press label="Send" onPress={send} style={st.send}><Ic name="send" s={18} c={D.GOLD} /></Press>
       </View>
     </View>
   );
 }
 
 const st = StyleSheet.create({
-  ref: { paddingVertical: 10, paddingHorizontal: 14, borderRadius: 14, backgroundColor: c.chip },
-  quick: { paddingVertical: 8, paddingHorizontal: 13, borderRadius: 99, backgroundColor: c.white, borderWidth: 1, borderColor: c.line },
-  bubble: { maxWidth: '82%', paddingVertical: 11, paddingHorizontal: 14 },
-  them: { alignSelf: 'flex-start', borderTopLeftRadius: 18, borderTopRightRadius: 18, borderBottomRightRadius: 18, borderBottomLeftRadius: 6, backgroundColor: c.white, borderWidth: 1, borderColor: c.line },
-  me: { alignSelf: 'flex-end', borderTopLeftRadius: 18, borderTopRightRadius: 18, borderBottomRightRadius: 6, borderBottomLeftRadius: 18, backgroundColor: c.ink },
-  act: { paddingVertical: 9, paddingHorizontal: 14, borderRadius: 12, backgroundColor: c.ink },
-  bar: { flexDirection: 'row', gap: 8, marginTop: 14, paddingTop: 8, paddingHorizontal: 18, backgroundColor: c.paper },
-  input: { flex: 1, height: 48, borderRadius: 14, backgroundColor: c.white, borderWidth: 1, borderColor: c.line, paddingHorizontal: 15, fontSize: 15, fontFamily: 'Geist-Regular', color: c.ink, paddingVertical: 0 },
-  send: { width: 48, height: 48, borderRadius: 16, backgroundColor: c.ink, alignItems: 'center', justifyContent: 'center' },
+  quick: { paddingVertical: 8, paddingHorizontal: 13, borderRadius: 999, backgroundColor: D.white, borderWidth: 1, borderColor: D.BOR },
+  bubble: { paddingVertical: 10, paddingHorizontal: 13 },
+  them: { backgroundColor: D.white, borderWidth: 1, borderColor: D.BOR, borderTopLeftRadius: 18, borderTopRightRadius: 18, borderBottomRightRadius: 18, borderBottomLeftRadius: 4 },
+  me: { backgroundColor: D.G, borderTopLeftRadius: 18, borderTopRightRadius: 18, borderBottomRightRadius: 4, borderBottomLeftRadius: 18 },
+  act: { alignSelf: 'flex-start', marginTop: 6, paddingVertical: 8, paddingHorizontal: 13, borderRadius: 11, backgroundColor: D.GOLD },
+  bar: { flexDirection: 'row', gap: 8, paddingTop: 10, paddingHorizontal: 16, backgroundColor: D.BG },
+  input: { flex: 1, minWidth: 0, height: 46, backgroundColor: D.white, borderWidth: 1.5, borderColor: D.BOR, borderRadius: 999, paddingHorizontal: 16, fontSize: 14, color: D.INK, paddingVertical: 0 },
+  send: { width: 46, height: 46, borderRadius: 23, backgroundColor: D.G, alignItems: 'center', justifyContent: 'center' },
 });

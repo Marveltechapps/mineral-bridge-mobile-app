@@ -4,9 +4,9 @@ appId: com.mineralbridge
 - launchApp:
     clearState: true
 - extendedWaitUntil:
-    visible: "Create account"
+    visible: "Skip"
     timeout: 60000
-- tapOn: "Create account"
+- tapOn: "Skip"
 - tapOn: "Email"
 - tapOn: "Adaeze Okafor"
 - inputText: "Maestro Buyer"

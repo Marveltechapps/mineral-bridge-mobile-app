@@ -2,9 +2,10 @@ appId: com.mineralbridge
 ---
 - launchApp
 - extendedWaitUntil:
-    visible: "Create account"
+    visible: "Skip"
     timeout: 60000
-- tapOn: "Create account"
+- tapOn: "Skip"
+- assertVisible: "Create your Mineral Bridge account"
 - tapOn: "Email"
 - tapOn: "Send verification code"
 - assertVisible: "Enter your full name"

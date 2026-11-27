@@ -1,28 +1,37 @@
 import React from 'react';
 import { View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from '../../context/AppStore';
-import { DemoBox, RefPill, SoftBtn, SuccessBadge } from '../../components/ui/Blocks';
-import { IC } from '../../components/ui/Icon';
-import { FadeUp } from '../../components/ui/Motion';
-import { Txt } from '../../components/ui/Txt';
-import { colors as c } from '../../theme';
+import { Grad, Ic, PopIn, T } from '../../components/mb/base';
+import { Btn, RefPill } from '../../components/mb/kit';
+import { D, SHADOW } from '../../theme';
 import { kycDemo } from './kycDemo';
 
+/** KYC submitted (`scr_kycDone`). */
 export function KycDoneScreen() {
-  const store = useStore(), s = store.state;
-  const demo = kycDemo(store);
+  const store = useStore(), s = store.state, u = s.user || { kyc: 'pending', kycRef: '' };
+  const insets = useSafeAreaInsets();
+  const demo = kycDemo(store), m = store.meta();
+  const verified = u.kyc === 'verified';
   return (
-    <FadeUp style={{ paddingTop: 40, paddingHorizontal: 22, paddingBottom: 24 }}>
-      <SuccessBadge d={IC.clock} sw={2.4} />
-      <Txt serif s={32} lh={1.05} ls={-0.3} center style={{ marginTop: 22 }}>KYC submitted for review</Txt>
-      <Txt s={14} c={c.muted} lh={1.5} center style={{ marginTop: 10 }}>Most reviews finish within one working day. {s.returnTo ? 'When approved, you can continue where you left off.' : 'We will notify you by email, SMS and WhatsApp when it is approved.'}</Txt>
-      <RefPill k="REF" v={(s.user || { kycRef: '' }).kycRef || ''} />
-      {__DEV__ ? <DemoBox title="DEV ONLY · LOCAL KYC DECISION (NOT SENT TO THE SERVER)" r={16} pad={14} style={{ marginTop: 22 }}>
-        <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
-          <SoftBtn label="Approve" bg={c.greenBg} fg={c.green} onPress={demo.approve} style={{ flex: 1 }} />
-          <SoftBtn label="Ask for document" bg={c.redBg} fg={c.red} onPress={demo.reject} style={{ flex: 1 }} />
-        </View>
-      </DemoBox> : null}
-    </FadeUp>
+    <View style={{ flexGrow: 1, paddingHorizontal: 24, paddingBottom: 26 + insets.bottom }}>
+      <Grad stops={[[0, D.cream], [1, D.BG]]} style={{ left: 0, right: 0 }} />
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 20 }}>
+        <PopIn><View style={{ width: 92, height: 92, borderRadius: 46, backgroundColor: verified ? D.G : D.INK, alignItems: 'center', justifyContent: 'center', boxShadow: SHADOW.badge }}><Ic name={verified ? 'check' : 'clock'} s={44} c={D.white} w={2.6} /></View></PopIn>
+        <T s={23} w={800} center style={{ marginTop: 22 }}>{verified ? 'KYC approved' : u.kyc === 'rejected' ? 'Documents need re-upload' : 'KYC submitted for review'}</T>
+        <T s={14} w={600} c={D.MUT} lh={1.5} center style={{ marginTop: 8, maxWidth: 290 }}>{'Most reviews finish within one working day. ' + (s.returnTo ? 'When approved, you can continue where you left off.' : 'We will notify you by email, SMS and WhatsApp when it is approved.')}</T>
+        <RefPill k="REF" v={u.kycRef || '—'} />
+        {__DEV__ ? (
+          <View style={{ width: '100%', marginTop: 26, padding: 14, borderRadius: 18, borderWidth: 1.5, borderStyle: 'dashed', borderColor: D.sand, backgroundColor: 'rgba(255,255,255,.5)' }}>
+            <T s={11} w={800} c={D.MUT} ls={0.04}>DEMO · SIMULATE COMPLIANCE DECISION</T>
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+              <View style={{ flex: 1 }}><Btn label="Approve" kind="subtle" size="sm" onPress={demo.approve} /></View>
+              <View style={{ flex: 1 }}><Btn label="Ask for document" kind="danger" size="sm" onPress={demo.reject} /></View>
+            </View>
+          </View>
+        ) : null}
+      </View>
+      <View style={{ marginTop: 20 }}><Btn label={m.cta || 'Go to home'} icon="arrowRight" onPress={() => store.primary()} /></View>
+    </View>
   );
 }

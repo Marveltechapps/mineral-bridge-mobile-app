@@ -1,206 +1,198 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useStore } from '../../context/AppStore';
-import { Card, Chevron, ContactGrid, DemoBox, DocList, ListCard, Pill, SoftBtn } from '../../components/ui/Blocks';
-import { Icon, IC } from '../../components/ui/Icon';
-import { FadeUp, ProgressFill } from '../../components/ui/Motion';
-import { Tap } from '../../components/ui/Tap';
-import { Label, Txt } from '../../components/ui/Txt';
+import { Grad, Ic, T } from '../../components/mb/base';
+import { Btn, Card, ContactRow, DemoBox, DocLine, Pill, Press, Row, Section } from '../../components/mb/kit';
 import * as MB from '../../lib/mb4';
-import { colors as c } from '../../theme';
+import { D, SHADOW } from '../../theme';
 import { auditRows, contactItems, currentOrder, orderDocs, orderLines, phaseRows, refundView } from './orderVals';
 
+/** Navy gradient card (150deg #14284B → #0A1428) used across the order screens. */
+export function NavyCard({ children, style }: { children: React.ReactNode; style?: object }) {
+  return (
+    <View style={[{ borderRadius: 22, padding: 18, overflow: 'hidden', backgroundColor: D.G }, style]}>
+      <Grad angle={150} stops={[[0, D.G], [1, D.deep]]} />
+      {children}
+    </View>
+  );
+}
+
+function LinkRow({ icon, text, onPress, c = D.INK, ic = D.GD }: { icon: string; text: string; onPress: () => void; c?: string; ic?: string }) {
+  return (
+    <Press scale={0.98} onPress={onPress} style={st.link}>
+      <Ic name={icon} s={18} c={ic} />
+      <T s={13.5} w={800} c={c} style={{ flex: 1 }}>{text}</T>
+      <Ic name="chevronRight" s={16} c={D.MUT} />
+    </Press>
+  );
+}
+
+/** Order / sell-request tracking (`scr_order` with the refund additions). */
 export function OrderTrackingScreen() {
   const store = useStore();
   const o = currentOrder(store);
   if (!o) return null;
-  const ov = store.view(o), sh = o.ship, ci = store.cancelInfo(o), rf = refundView(o), docs = orderDocs(store, o);
+  const v = store.view(o), sh = o.ship, ci = store.cancelInfo(o), rf = refundView(o), docs = orderDocs(store, o), sell = o.kind === 'sell';
   const showTrack = !!sh && !(o.refund && o.refund.status === 'refunded');
-  const sell = o.kind === 'sell';
-  const amount = o.quote ? MB.money(o.quote.total) : '';
-  const canRefundBtn = store.refundable(o) && o.hold !== 'discrepancy';
-  const hasDisc = o.hold === 'discrepancy' && !!o.disc;
-  const goAction = () => { if (ov.actionScreen === 'quote' && !o.quote) return; store.prefillForms(o); store.go(ov.actionScreen as never); };
-  const rejAlt = () => { if (sell) return store.jump('sellCats'); const m = (MB.product(o.items[0] && o.items[0].pid) || { mineral: 'gold' }).mineral; store.jump('lots', { mineral: m, fform: 'All', labOnly: false, search: '' }); };
-
-  return (
-    <FadeUp style={{ paddingHorizontal: 18, paddingBottom: 24 }}>
-      <View style={st.hero}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-          <Label c={c.faint}>{ov.step}</Label>
-          <Pill label={ov.status} bg={ov.pillBg} fg={ov.pillFg} pad={[4, 10]} />
+  const goAction = () => { if (v.actionScreen === 'quote' && !o.quote) return; store.prefillForms(o); store.go(v.actionScreen as never); };
+  const rejAlt = () => { if (sell) return store.jump('sellCats'); const p = MB.product(o.items[0] && o.items[0].pid); store.jump('cats', { cat: '', search: p ? MB.mineralName(p.mineral) : '' }); };
+  const hasDisc = o.hold === 'discrepancy';
+  const extra = (
+    <>
+      {hasDisc ? (
+        <View style={st.disc}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+            <T s={10.5} w={800} c={D.DANGER} ls={0.06}>DELIVERY DISCREPANCY</T>
+            <T s={11} w={800} c={D.AMBER}>Under review</T>
+          </View>
+          {o.disc && o.disc.qty ? <T s={13} w={800} style={{ marginTop: 6 }}>{o.disc.qty + ' received · condition ' + o.disc.cond.toLowerCase() + ' · ' + o.disc.photos + (o.disc.photos === 1 ? ' photo' : ' photos')}</T> : null}
+          <T s={12.5} w={600} lh={1.45} style={{ marginTop: 6 }}>Mineral Bridge reviews the delivery photos and carrier records, then either ships the missing quantity or you can ask for money back for the difference.</T>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+            <View style={{ flex: 1 }}><Btn label="Refund the difference" size="sm" onPress={() => store.openRefund(o, { reason: 'Quantity or quality issue', note: 'Delivery discrepancy: ' + ((o.disc || { note: '' }).note || ''), type: 'partial' })} /></View>
+            <View style={{ flex: 1 }}><Btn label="Discuss in chat" size="sm" kind="ghost" onPress={() => store.go('chat', { oid: o.id })} /></View>
+          </View>
         </View>
-        <Txt serif s={28} lh={1.1} c={c.paper} style={{ marginTop: 10 }}>{ov.headline}</Txt>
-        <Txt s={13} c={c.soft} lh={1.45} style={{ marginTop: 6 }}>{ov.next}</Txt>
-        <View style={st.heroTrack}><ProgressFill pct={ov.pct} style={{ borderRadius: 2, backgroundColor: c.gold }} /></View>
-        <Txt s={11.5} c={c.faint} style={{ marginTop: 8 }}>Updated {ov.updated}</Txt>
-      </View>
-      {ov.you ? (
-        <Tap scale={0.98} onPress={goAction} style={st.action}>
-          <Txt s={15} w={600}>{ov.actionLabel}</Txt>
-          <Icon d={IC.chevron} size={15} sw={2.4} linejoin={false} />
-        </Tap>
       ) : null}
-      {showTrack && sh ? (
-        <Tap scale={0.98} onPress={() => store.go('shipment')} style={st.track}>
-          <Icon d={IC.truck} size={17} />
-          <Txt s={14} w={600}>Track shipment · {sh.status}</Txt>
-        </Tap>
-      ) : null}
-      {hasDisc && o.disc ? (
-        <Card style={{ marginTop: 12, borderColor: c.redLine, paddingVertical: 15, paddingHorizontal: 16 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-            <Label c={c.red}>DELIVERY DISCREPANCY</Label>
-            <Pill label="Under review" bg={c.redBg} fg={c.red} />
-          </View>
-          <Txt s={14} w={600} style={{ marginTop: 8 }}>{o.disc.qty ? o.disc.qty + ' received · condition ' + o.disc.cond.toLowerCase() + ' · ' + o.disc.photos + (o.disc.photos === 1 ? ' photo' : ' photos') : 'Discrepancy raised'}</Txt>
-          <Txt s={12.5} c={c.ink2} lh={1.5} style={{ marginTop: 4 }}>“{o.disc.note}”</Txt>
-          <Txt s={12} c={c.muted} lh={1.5} style={{ marginTop: 8 }}>Mineral Bridge reviews the delivery photos and carrier records, then either ships the missing quantity or you can ask for money back for the difference.</Txt>
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
-            <Tap onPress={() => store.openRefund(o, { reason: 'Quantity or quality issue', note: 'Delivery discrepancy: ' + (o.disc || { note: '' }).note, type: 'partial' })} style={[st.half, { backgroundColor: c.ink }]}><Txt s={13} w={600} c={c.paper}>Refund the difference</Txt></Tap>
-            <Tap onPress={() => store.go('chat')} style={[st.half, st.light]}><Txt s={13} w={600}>Discuss in chat</Txt></Tap>
-          </View>
-        </Card>
-      ) : null}
-      {canRefundBtn ? (
-        <Tap scale={0.98} onPress={() => store.openRefund(o)} style={[st.btnRow, { height: 48, marginTop: 10, borderColor: c.redLine }]}>
-          <Icon d={IC.refund} size={16} color={c.red} sw={2} />
-          <Txt s={14} w={600} c={c.red}>Request a refund</Txt>
-        </Tap>
-      ) : null}
-      {ci.mode !== 'none' ? (
-        <Tap scale={0.98} onPress={() => store.openCancel(o)} style={[st.btnRow, { height: 46, marginTop: 8, backgroundColor: 'transparent' }]}>
-          <Icon d="M15 9l-6 6M9 9l6 6" circles={[[12, 12, 9]]} size={15} color={c.muted} sw={2} linejoin={false} />
-          <Txt s={13.5} w={600} c={c.muted}>{ci.mode === 'refund' ? 'Cancel order and get a refund' : sell ? 'Cancel sell request' : 'Cancel order'}</Txt>
-        </Tap>
-      ) : null}
+      {store.refundable(o) && !hasDisc ? <LinkRow icon="refund" text="Request a refund" onPress={() => store.openRefund(o)} /> : null}
       {rf ? (
-        <Card style={{ marginTop: 12, paddingVertical: 15, paddingHorizontal: 16 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-            <Label>REFUND · {rf.ref}</Label>
-            <Pill label={rf.statusLabel} bg={rf.pillBg} fg={rf.pillFg} />
+        <View style={st.box}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <T s={11} w={800} c={D.MUT}>{'REFUND · ' + rf.ref}</T>
+            <Pill label={rf.statusLabel} bg={rf.pillBg} fg={rf.pillFg} pad={[3, 9]} />
           </View>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 10 }}>
-            <Txt s={13.5} c={c.muted}>{rf.typeLabel}</Txt>
-            <Txt mono s={20} w={600}>{rf.amount}</Txt>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
+            <T s={14} w={800}>{rf.typeLabel}</T>
+            <T s={14} w={800} c={D.GD}>{rf.amount}</T>
           </View>
-          <Txt s={12.5} c={c.ink2} style={{ marginTop: 4 }}>{rf.reason} · to {rf.to}</Txt>
-          {rf.declined ? <View style={st.declined}><Txt s={12.5} c={c.red} lh={1.45}>{rf.declineReason}</Txt></View> : null}
-          {rf.showSteps ? (
-            <View style={{ flexDirection: 'row', gap: 4, marginTop: 14 }}>
+          <T s={12} w={600} c={D.MUT} style={{ marginTop: 2 }}>{rf.reason + ' · to ' + rf.to}</T>
+          {rf.declined ? <T s={12} w={700} c={D.DANGER} lh={1.4} style={{ marginTop: 8 }}>{rf.declineReason}</T> : (
+            <View style={{ flexDirection: 'row', gap: 4, marginTop: 10 }}>
               {rf.steps.map(t => (
-                <View key={t.l} style={{ flex: 1, minWidth: 0 }}>
+                <View key={t.l} style={{ flex: 1 }}>
                   <View style={{ height: 4, borderRadius: 2, backgroundColor: t.bar }} />
-                  <Txt s={10} lh={1.25} w={t.w} c={t.fg} style={{ marginTop: 5 }}>{t.l}</Txt>
+                  <T s={9} w={t.w} c={t.fg} lh={1.2} style={{ marginTop: 4 }}>{t.l}</T>
                 </View>
               ))}
             </View>
-          ) : null}
-          {rf.bankRef ? <Txt mono s={11.5} c={c.green} style={{ marginTop: 10 }}>Bank reference {rf.bankRef}</Txt> : null}
-        </Card>
-      ) : null}
-      {ov.rej ? (
-        <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
-          <Tap onPress={rejAlt} style={[st.half, { height: 48, borderRadius: 16, backgroundColor: c.ink }]}><Txt s={13.5} w={600} c={c.paper}>{sell ? 'Sell another mineral' : 'Find a similar lot'}</Txt></Tap>
-          <Tap onPress={() => store.go('chat')} style={[st.half, st.light, { height: 48, borderRadius: 16 }]}><Txt s={13.5} w={600}>Contact support</Txt></Tap>
+          )}
+          {rf.bankRef ? <T s={11.5} w={700} c={D.green} style={{ marginTop: 8 }}>{'Bank reference ' + rf.bankRef}</T> : null}
         </View>
       ) : null}
-      {ov.canDemo ? (
-        <DemoBox title="DEV ONLY · LOCAL SIMULATION (NOT SENT TO THE SERVER)" style={{ marginTop: 10 }}>
-          <SoftBtn label={ov.demoLabel} onPress={() => store.demo('')} style={{ marginTop: 8 }} />
-          {ov.canDeclineRefund ? <SoftBtn label="Simulate: refund declined with reason" h={38} bg="transparent" fg={c.red} s={12.5} onPress={() => store.demo('refundDecline')} style={{ marginTop: 6 }} /> : null}
-          {ov.canReject ? <SoftBtn label="Simulate: order rejected with reason" h={38} bg="transparent" fg={c.red} s={12.5} onPress={() => store.demo('reject')} style={{ marginTop: 6 }} /> : null}
-          {ov.canChanges ? <SoftBtn label="Simulate: changes requested" h={38} bg="transparent" fg={c.amber} s={12.5} onPress={() => store.demo('changes')} style={{ marginTop: 6 }} /> : null}
+      {v.canDeclineRefund ? <View style={{ marginTop: 8 }}><Btn label="Simulate: refund declined with reason" kind="danger" size="sm" onPress={() => store.demo('refundDecline')} /></View> : null}
+    </>
+  );
+  return (
+    <View style={{ paddingTop: 14, paddingHorizontal: 16, paddingBottom: 24 }}>
+      <NavyCard style={{ boxShadow: SHADOW.dark }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+          <T s={10.5} w={800} c={D.GOLD} ls={0.08}>{v.step}</T>
+          <Pill label={v.status} bg={v.pillBg} fg={v.pillFg} pad={[4, 9]} />
+        </View>
+        <T s={20} w={800} c={D.white} lh={1.2} style={{ marginTop: 10 }}>{v.headline}</T>
+        <T s={12.5} w={600} c={D.navyMute} lh={1.45} style={{ marginTop: 5 }}>{v.next}</T>
+        <View style={{ height: 5, borderRadius: 3, backgroundColor: 'rgba(255,255,255,.14)', marginTop: 14, overflow: 'hidden' }}>
+          <View style={{ width: v.pct as `${number}%`, height: '100%', backgroundColor: D.GOLD }} />
+        </View>
+        <T s={11} w={600} c={D.navyFaint} style={{ marginTop: 8 }}>{'Updated ' + v.updated}</T>
+      </NavyCard>
+      {!v.you ? extra : null}
+      {v.you ? (
+        <Press onPress={goAction} style={st.action}>
+          <T s={15} w={800} c={D.G}>{v.actionLabel}</T>
+          <Ic name="arrowRight" s={18} c={D.G} w={2.4} />
+        </Press>
+      ) : null}
+      {v.you ? extra : null}
+      {showTrack && sh ? <LinkRow icon="truck" text={'Track shipment · ' + sh.status} onPress={() => store.go('shipment')} /> : null}
+      {ci.mode !== 'none' ? <LinkRow icon="x" ic={D.MUT} c={D.MUT} text={ci.mode === 'refund' ? 'Cancel order and get a refund' : sell ? 'Cancel sell request' : 'Cancel order'} onPress={() => store.openCancel(o)} /> : null}
+      {v.rej ? (
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+          <View style={{ flex: 1 }}><Btn label={sell ? 'Sell another mineral' : 'Find a similar lot'} size="sm" onPress={rejAlt} /></View>
+          <View style={{ flex: 1 }}><Btn label="Contact support" size="sm" kind="ghost" onPress={() => store.go('chat')} /></View>
+        </View>
+      ) : null}
+      {v.canDemo ? (
+        <DemoBox title="DEMO · STEPS OWNED BY MINERAL BRIDGE, SGS OR LOGISTICS">
+          <Btn label={v.demoLabel} kind="dark" size="sm" onPress={() => store.demo('')} />
+          {v.canReject ? <Btn label="Simulate: order rejected with reason" kind="danger" size="sm" onPress={() => store.demo('reject')} /> : null}
+          {v.canChanges ? <Btn label="Simulate: changes requested" kind="subtle" size="sm" onPress={() => store.demo('changes')} /> : null}
         </DemoBox>
       ) : null}
 
-      <Label style={st.sec}>ORDER</Label>
-      <ListCard>
+      <Section t={sell ? 'Sell request' : 'Order'} />
+      <Card>
         {orderLines(o).map((l, i) => (
-          <View key={i} style={st.lineRow}>
+          <View key={i} style={{ paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: D.BOR }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
-              <Txt s={14} w={600} style={{ flexShrink: 1 }}>{l.n}</Txt>
-              <Txt s={14} mono>{l.q}</Txt>
+              <T s={13.5} w={800} style={{ flexShrink: 1 }}>{l.n}</T>
+              <T s={13.5} w={800}>{l.q}</T>
             </View>
-            <Txt s={12} c={c.muted} style={{ marginTop: 3 }}>{l.g}</Txt>
+            <T s={12} w={600} c={D.MUT} style={{ marginTop: 2 }}>{l.g}</T>
           </View>
         ))}
-        {amount ? (
-          <View style={[st.rowKV, { borderBottomWidth: 1, borderBottomColor: c.hair }]}>
-            <Txt s={13.5} c={c.muted}>{sell ? 'AGREED PRICE' : o.quote && o.quote.est ? 'ESTIMATED TOTAL' : 'QUOTED TOTAL'}</Txt>
-            <Txt s={13.5} mono w={600}>{amount}</Txt>
-          </View>
-        ) : null}
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 11, borderBottomWidth: o.insp ? 1 : 0, borderBottomColor: D.BOR }}>
+          <T s={12.5} w={700} c={D.MUT}>{sell ? 'Agreed price' : o.quote && o.quote.est ? 'Estimated total' : 'Quoted total'}</T>
+          <T s={14} w={800} c={D.GD}>{o.quote ? MB.money(o.quote.total) : 'By quotation'}</T>
+        </View>
         {o.insp ? (
-          <View style={[st.rowKV, { borderBottomWidth: 1, borderBottomColor: c.hair, gap: 10 }]}>
-            <Txt s={13.5} c={c.muted}>Inspection</Txt>
-            <Txt s={13.5} w={600} right style={{ flexShrink: 1 }}>{o.insp.when + ' · ' + ((o.form || {}).address || '')}</Txt>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10, paddingVertical: 11 }}>
+            <T s={12.5} w={700} c={D.MUT}>Inspection</T>
+            <T s={12.5} w={800} right style={{ flexShrink: 1 }}>{o.insp.when + ' · ' + ((o.form || {}).address || '')}</T>
           </View>
         ) : null}
-        {showTrack && sh ? (
-          <Tap onPress={() => store.go('shipment')} style={[st.rowKV, { alignItems: 'center', gap: 10 }]}>
-            <Txt s={13.5} c={c.muted}>Logistics</Txt>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 }}>
-              <View style={{ alignItems: 'flex-end', flexShrink: 1 }}>
-                <Txt s={13.5} w={600} right>{sh.status}</Txt>
-                <Txt s={12} c={c.muted} right>{sh.partner + ' · ' + sh.id}</Txt>
-              </View>
-              <Chevron />
-            </View>
-          </Tap>
-        ) : null}
-      </ListCard>
+      </Card>
 
-      <Label style={st.sec}>PROGRESS</Label>
-      <Card style={{ paddingTop: 14, paddingHorizontal: 16, paddingBottom: 4 }}>
-        {phaseRows(o).map(p => (
-          <View key={p.n} style={{ flexDirection: 'row', gap: 12 }}>
-            <View style={{ alignItems: 'center' }}>
-              <View style={[st.dot, { backgroundColor: p.dot, borderColor: p.dotBorder }]}><Txt mono s={10.5} c={c.paper}>{p.n}</Txt></View>
-              <View style={{ width: 2, flex: 1, minHeight: 12, backgroundColor: p.line }} />
+      <Section t="Progress" />
+      <Card style={{ paddingTop: 2, paddingBottom: 8 }}>
+        {phaseRows(o).map((p, i) => (
+          <View key={p.n} style={{ flexDirection: 'row', gap: 12, alignItems: 'stretch' }}>
+            <View style={{ alignItems: 'center', width: 24 }}>
+              <View style={[st.dot, { backgroundColor: p.dot, borderColor: p.dotBorder }]}>
+                {p.done ? <Ic name="check" s={12} c={D.GOLD} w={3} /> : <T s={10.5} w={800} c={p.now ? D.G : D.MUT}>{String(i + 1)}</T>}
+              </View>
+              {!p.last ? <View style={{ flex: 1, width: 2, minHeight: 10, backgroundColor: p.line }} /> : null}
             </View>
-            <View style={{ flex: 1, flexDirection: 'row', justifyContent: 'space-between', gap: 8, paddingTop: 2, paddingBottom: 14 }}>
-              <Txt s={13.5} w={600} c={p.fg} style={{ flexShrink: 1 }}>{p.l}</Txt>
-              <Txt mono s={10.5} c={c.goldInk}>{p.tag}</Txt>
+            <View style={{ flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10 }}>
+              <T s={13.5} w={p.done || p.now ? 800 : 600} c={p.fg} style={{ flexShrink: 1 }}>{p.l}</T>
+              {p.tag ? <T s={10.5} w={800} c={p.tagFg}>{p.tag}</T> : null}
             </View>
           </View>
         ))}
       </Card>
-      {docs.length ? (<><Label style={st.sec}>DOCUMENTS</Label><DocList docs={docs} /></>) : null}
-      <Label style={st.sec}>CONTACT MINERAL BRIDGE</Label>
-      <ContactGrid items={contactItems(store)} />
-      <Label style={st.sec}>APPROVALS & HISTORY</Label>
-      <ListCard>
+
+      {docs.length ? (
+        <>
+          <Section t="Documents" />
+          <Card>{docs.map((d, i) => <DocLine key={d.n + i} n={d.n} f={d.f} onPress={d.tap} last={i === docs.length - 1} />)}</Card>
+        </>
+      ) : null}
+      <Section t="Contact Mineral Bridge" />
+      <ContactRow items={contactItems(store)} />
+      <Section t="Approvals & history" />
+      <Card>
         {auditRows(o).map((a, i) => (
-          <View key={i} style={{ flexDirection: 'row', gap: 11, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: a.line }}>
-            <View style={[st.avatar, { backgroundColor: a.youBg }]}><Txt mono s={9} w={600} c={a.youFg}>{a.ini}</Txt></View>
+          <Row key={i} last={a.last} style={{ alignItems: 'flex-start' }}>
+            <View style={[st.avatar, { backgroundColor: a.youBg }]}><T s={9.5} w={800} c={a.youFg}>{a.ini}</T></View>
             <View style={{ flex: 1, minWidth: 0 }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
-                <Txt s={13.5} w={600} style={{ flexShrink: 1 }}>{a.text}</Txt>
-                <Txt mono s={10.5} c={c.muted2}>{a.at}</Txt>
+                <T s={13} w={800} style={{ flexShrink: 1 }}>{a.text}</T>
+                <T s={10.5} w={600} c={D.MUT}>{a.at}</T>
               </View>
-              <Txt s={12} c={c.muted} style={{ marginTop: 2 }}>{a.who}</Txt>
-              {a.note ? <Txt s={12.5} c={c.ink2} lh={1.45} style={{ marginTop: 4 }}>{a.note}</Txt> : null}
+              <T s={11.5} w={700} c={D.MUT} style={{ marginTop: 1 }}>{a.who}</T>
+              {a.note ? <T s={12} w={600} c={D.INK} lh={1.4} style={{ marginTop: 3, opacity: 0.8 }}>{a.note}</T> : null}
             </View>
-          </View>
+          </Row>
         ))}
-      </ListCard>
-    </FadeUp>
+      </Card>
+    </View>
   );
 }
 
 const st = StyleSheet.create({
-  hero: { padding: 18, borderRadius: 24, backgroundColor: c.ink },
-  heroTrack: { height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,.12)', marginTop: 14, overflow: 'hidden' },
-  action: { marginTop: 10, height: 54, borderRadius: 18, backgroundColor: c.gold, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  track: { marginTop: 10, height: 50, borderRadius: 16, backgroundColor: c.white, borderWidth: 1, borderColor: c.line, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9 },
-  btnRow: { borderRadius: 16, backgroundColor: c.white, borderWidth: 1, borderColor: c.line, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  half: { flex: 1, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  light: { backgroundColor: c.white, borderWidth: 1, borderColor: c.line },
-  declined: { marginTop: 10, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 12, backgroundColor: c.redBg },
-  sec: { marginTop: 20, marginHorizontal: 4, marginBottom: 8 },
-  lineRow: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.hair },
-  rowKV: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 12 },
-  dot: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5 },
+  action: { marginTop: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 15, borderRadius: 14, backgroundColor: D.GOLD, boxShadow: SHADOW.gold },
+  link: { marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 13, paddingHorizontal: 14, borderRadius: 14, backgroundColor: D.white, borderWidth: 1, borderColor: D.BOR },
+  disc: { marginTop: 12, backgroundColor: D.white, borderWidth: 1.5, borderColor: D.redLine, borderRadius: 18, padding: 14 },
+  box: { marginTop: 12, backgroundColor: D.white, borderWidth: 1, borderColor: D.BOR, borderRadius: 18, padding: 14 },
+  dot: { width: 22, height: 22, borderRadius: 11, marginTop: 9, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
   avatar: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
 });

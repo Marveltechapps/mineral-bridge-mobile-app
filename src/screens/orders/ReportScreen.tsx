@@ -1,59 +1,46 @@
 import React from 'react';
+import { View } from 'react-native';
 import { useStore } from '../../context/AppStore';
-import { Card, ErrBox, Field, KV, ListCard, SummaryCard } from '../../components/ui/Blocks';
-import { FadeUp } from '../../components/ui/Motion';
-import { Tap } from '../../components/ui/Tap';
-import { Label, Txt } from '../../components/ui/Txt';
+import { T } from '../../components/mb/base';
+import { Alert, Empty, FLabel, Input, KV, Press, Section, Summary } from '../../components/mb/kit';
 import * as MB from '../../lib/mb4';
-import { colors as c } from '../../theme';
-import { currentOrder } from './orderVals';
+import { D } from '../../theme';
+import { currentOrder, orderIm } from './orderVals';
 
-/** Inspection reports (Mineral Bridge inspection + SGS) for sell requests. */
+/** Inspection reports (`scr_report`) — Mineral Bridge inspection + SGS test for sell requests. */
 export function ReportScreen() {
   const store = useStore(), s = store.state;
   const o = currentOrder(store);
   if (!o) return null;
-  const ov = store.view(o);
+  const v = store.view(o), has = !!(o.company || o.sgs);
   const docOf = (type: string) => (o.docs || []).find(d => d.type === type);
   const open = (type: string) => { const d = docOf(type); if (d) store.openDoc({ t: type, num: d.number, oid: o.id }); };
-  const has = !!(o.company || o.sgs);
+  const link = (type: string, l: string) => (docOf(type) ? <Press onPress={() => open(type)} style={{ marginTop: 8, marginHorizontal: 2 }}><T s={13} w={800} c={D.GD}>{l}</T></Press> : null);
   return (
-    <FadeUp style={{ paddingHorizontal: 18, paddingBottom: 24 }}>
-      <SummaryCard id={ov.id} title={ov.title} sub={ov.qtyLine} />
-      {!has ? (
-        <Card style={{ marginTop: 12, padding: 22, alignItems: 'center' }}>
-          <Txt s={15} w={600}>Reports not uploaded yet</Txt>
-          <Txt s={13} c={c.muted} style={{ marginTop: 6 }}>They appear here after the inspection.</Txt>
-        </Card>
-      ) : null}
+    <View style={{ paddingTop: 14, paddingHorizontal: 18 }}>
+      <Summary im={orderIm(o)} id={o.id} title={v.title} sub={v.qtyLine} />
+      {!has ? <Empty icon="file" title="Reports not uploaded yet" msg="They appear here after the inspection." /> : null}
       {o.company ? (
         <>
-          <Label style={{ marginTop: 20, marginHorizontal: 4, marginBottom: 8 }}>1 · MINERAL BRIDGE INSPECTION</Label>
-          <ListCard>
-            <KV k="Inspected by" v={o.company.by} />
-            <KV k="Date" v={MB.fmt(o.company.at)} />
-            <KV k="Result" v={o.company.result} vColor={c.green} line={false} />
-          </ListCard>
-          {docOf('inspection_report') ? <Tap onPress={() => open('inspection_report')} style={{ marginTop: 8, marginHorizontal: 4 }}><Txt s={13} w={600} c={c.goldInk}>Open inspection report</Txt></Tap> : null}
+          <Section t="1 · Mineral Bridge inspection" />
+          <KV rows={[['Inspected by', o.company.by], ['Date', MB.fmt(o.company.at)], ['Result', o.company.result]]} />
+          {link('inspection_report', 'Open inspection report')}
         </>
       ) : null}
       {o.sgs ? (
         <>
-          <Label style={{ marginTop: 20, marginHorizontal: 4, marginBottom: 8 }}>2 · THIRD-PARTY TEST (SGS)</Label>
-          <ListCard>
-            <KV k="Report no." v={o.sgs.no} mono />
-            <KV k="Issued" v={MB.fmt(o.sgs.at)} line={false} />
-          </ListCard>
-          {docOf('test_certificate') ? <Tap onPress={() => open('test_certificate')} style={{ marginTop: 8, marginHorizontal: 4 }}><Txt s={13} w={600} c={c.goldInk}>Open test report</Txt></Tap> : null}
+          <Section t="2 · Third-party test (SGS)" />
+          <KV rows={[['Report no.', o.sgs.no], !!o.sell && ['Net weight', o.sell.qty + ' ' + o.sell.unit], !!(o.sell && o.sell.grade) && ['Grade', o.sell!.grade], !!o.sgs.result && ['Result', o.sgs.result], ['Issued', MB.fmt(o.sgs.at)]]} />
+          {link('test_certificate', 'Open test report')}
         </>
       ) : null}
       {has ? (
         <>
-          <Label style={{ marginTop: 20, marginHorizontal: 4, marginBottom: 6 }}>NOTE (NEEDED TO REQUEST CLARIFICATION)</Label>
-          <Field accessibilityLabel="Clarification note" multiline value={s.repNote} placeholder="What needs clarifying?" onChangeText={t => store.setState({ repNote: t, repErr: '' })} />
-          {s.repErr ? <ErrBox>{s.repErr}</ErrBox> : null}
+          <FLabel t="Note (needed to request clarification)" mt={16} />
+          <Input accessibilityLabel="Clarification note" multiline value={s.repNote} placeholder="What needs clarifying?" onChangeText={t => store.setState({ repNote: t, repErr: '' })} />
+          <Alert msg={s.repErr} />
         </>
       ) : null}
-    </FadeUp>
+    </View>
   );
 }

@@ -25,14 +25,14 @@ The sample feature reads `GET /api/samples` from the service. Start the service 
 
 ## Mineral Bridge customer app
 
-The app UI is a native React Native implementation of the "Mineral Bridge Mobile Prototype v4" design handoff (no WebView). `App.tsx` wraps `RootNavigator` in `SafeAreaProvider` and `AppStoreProvider`; `RootNavigator` renders `src/navigation/AppShell.tsx`.
+The app UI is a native React Native implementation of the "Mineral Bridge Mobile Final" design (the Selorg app layout: navy `#14284B`, gold `#D9B456`, paper `#F4F2ED`, Plus Jakarta Sans). No WebView. `App.tsx` wraps `RootNavigator` in `SafeAreaProvider` and `AppStoreProvider`; `RootNavigator` renders `src/navigation/AppShell.tsx`.
 
-- `src/context/` — app store (`store.ts`, a port of the prototype's state machine: navigation stack, order stages, KYC, auctions, refunds, documents), initial/demo state (`state.ts`) and the React provider (`AppStore.tsx`).
-- `src/lib/mb4.ts` — demo catalog, order stages and the simulated counterparty updates. `src/lib/images.ts` — design images in `assets/images`.
-- `src/components/ui/` — design primitives (text, icons, gradients, motion, cards, fields). `src/components/AppChrome.tsx` — header, step bar, CTA bar, tab bar, toast and sheet.
-- `src/screens/<feature>/` — onboarding, dashboard, buy, orders, sell, auctions, account.
-- Fonts: Geist, Geist Mono and Instrument Serif in `assets/fonts`, copied to `android/app/src/main/assets/fonts` and listed in `ios/MineralBridge/Info.plist` (`UIAppFonts`) and the Xcode project resources.
-- Steps owned by Mineral Bridge, SGS or the logistics partner are simulated with the labelled demo buttons, exactly as in the design. App state is in memory (no persistence).
-- The original starter screens (`HomeScreen`, `SampleScreen`, `/api/samples`) are unchanged. In development builds, long-press the hero image on the welcome screen to open them.
+- `src/context/` — app store (`store.ts`: navigation stack, order stages, KYC, auctions, refunds, documents, per-screen header/CTA metadata), API layer (`remote.ts`), initial state (`state.ts`) and the React provider (`AppStore.tsx`).
+- `src/theme/design.ts` — design tokens of the final design. `src/components/mb/` — design primitives: `base.tsx` (text, line icons, gradients, keyframes), `kit.tsx` (buttons, header, inputs, cards, chips, sheets…), `art.tsx` (logo, the two gold photos and the per-mineral SVG artwork drawn with react-native-svg).
+- `src/components/AppChrome.tsx` — header, in-flow CTA, floating tab bar with the gold Orders button, toast, confirmation sheet and the navy splash / loading overlay.
+- `src/screens/<feature>/` — onboarding, dashboard, buy, orders, sell, auctions, account, support. Home, Buy and Sell have fixed tops (`TOPS` in `src/screens/index.ts`).
+- Fonts: Plus Jakarta Sans 400–800 (static instances of the variable font embedded in the design) in `assets/fonts`, copied to `android/app/src/main/assets/fonts` and listed in `ios/MineralBridge/Info.plist` (`UIAppFonts`) and the Xcode project resources. Images: `assets/images/mb_logo.png`, `mb_grains.jpg`, `mb_bars.jpg`.
+- Steps owned by Mineral Bridge, SGS or the logistics partner can be simulated with the labelled demo buttons in development builds only. Product photos from the API are shown when a lot has one; otherwise the design's placeholder artwork is drawn.
+- The original starter screens (`HomeScreen`, `SampleScreen`, `/api/samples`) are unchanged. In development builds, long-press the onboarding image to open them.
 
-`npm test` runs the store regression tests in `__tests__/`.
+`npm test` runs the store regression tests in `__tests__/`. The Maestro flows in `.maestro/` start from the onboarding screen (Skip → sign up / browse as guest).

@@ -1,35 +1,25 @@
 import React from 'react';
 import { View } from 'react-native';
 import { useStore } from '../../context/AppStore';
-import { Card, NumDot, RefPill, SuccessBadge } from '../../components/ui/Blocks';
-import { FadeUp } from '../../components/ui/Motion';
-import { Label, Txt } from '../../components/ui/Txt';
-import { colors as c } from '../../theme';
+import { T } from '../../components/mb/base';
+import { Steps } from '../../components/mb/kit';
+import { D } from '../../theme';
+import { SuccessLayout } from '../buy/OrderPlacedScreen';
 
 const NEXT: [string, string][] = [['Review and price', 'Our operations team checks your request and contacts you to agree a price.'], ['E-contract', 'Both sides accept the price, then sign the e-contract.'], ['Inspection and payment', 'Mineral Bridge inspects the product at your site, SGS tests it, then payment is released before pickup.']];
 
+/** Sell request submitted (`scr_sellDone`). */
 export function SellDoneScreen() {
   const store = useStore(), s = store.state;
-  const so = s.orders.find(o => o.id === s.oid);
-  const summary = so && so.kind === 'sell' && so.sell ? so.sell.qty + ' ' + so.sell.unit + ' of ' + so.sell.name + ' · ' + so.sell.photos + ' photos' : '';
+  const so = s.orders.find(o => o.id === s.oid), sv = so && so.kind === 'sell' ? so.sell : undefined;
+  const summary = sv ? sv.qty + ' ' + sv.unit + ' of ' + sv.name + ' · ' + sv.photos + ' photos. ' : '';
   return (
-    <FadeUp style={{ paddingTop: 40, paddingHorizontal: 22, paddingBottom: 24 }}>
-      <SuccessBadge />
-      <Txt serif s={32} lh={1.05} ls={-0.3} center style={{ marginTop: 22 }}>Sell request submitted</Txt>
-      <Txt s={14} c={c.muted} lh={1.5} center style={{ marginTop: 10 }}>{summary}. Nothing is sold until you accept a price and sign the e-contract.</Txt>
-      <RefPill k="REF" v={so ? so.id : ''} />
-      <Label style={{ marginTop: 24, marginHorizontal: 4, marginBottom: 8 }}>WHAT HAPPENS NEXT</Label>
-      <Card style={{ paddingVertical: 2, paddingHorizontal: 16 }}>
-        {NEXT.map(([t, b], i) => (
-          <View key={t} style={{ flexDirection: 'row', gap: 12, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: c.hair }}>
-            <NumDot n={i + 1} />
-            <View style={{ flex: 1 }}>
-              <Txt s={14} w={600}>{t}</Txt>
-              <Txt s={12.5} c={c.muted} lh={1.45} style={{ marginTop: 2 }}>{b}</Txt>
-            </View>
-          </View>
-        ))}
-      </Card>
-    </FadeUp>
+    <SuccessLayout title="Sell request submitted" ts={23} bs={13.5} body={summary + 'Nothing is sold until you accept a price and sign the e-contract.'} refK="REF" refV={so ? so.id : s.oid}
+      cta="Track request" onCta={() => { store.setState({ otab: 'sell' }); store.primary(); }} cta2="Back to home" onCta2={() => store.secondary()}>
+      <View style={{ width: '100%', marginTop: 20 }}>
+        <T s={12.5} w={800} c={D.MUT} style={{ marginHorizontal: 2, marginBottom: 10 }}>What happens next</T>
+        <Steps items={NEXT} />
+      </View>
+    </SuccessLayout>
   );
 }

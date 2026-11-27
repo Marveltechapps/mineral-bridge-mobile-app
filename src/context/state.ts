@@ -113,6 +113,8 @@ export interface AppState {
   qty: string;
   qtyErr: string;
   search: string;
+  /** Search on the Sell tab (separate from the Buy search). */
+  sellSearch: string;
   sort: string;
   sortOpen?: boolean;
   cols?: number;
@@ -126,6 +128,8 @@ export interface AppState {
   productsByMineral: Record<string, string[]>;
   cart: OrderItem[];
   cartVersion: number;
+  /** Saved (hearted) lot ids — a local UI list, not synced to the server. */
+  wish: string[];
   orders: Order[];
   ordersLoading: boolean;
   oid: string;
@@ -226,9 +230,9 @@ export function fresh(): AppState {
     challengeId: '', registrationToken: '', maskedDest: '', devOtp: '', resendAt: 0,
     otp: '', otpErr: '', reg: { role: '', buyerType: '', sellerType: '', business: '', country: 'Nigeria', other: '', terms: false }, regErr: '',
     kyc: { idType: 'National ID', front: false, back: false, selfie: false, address: false, biz: false, consent: false }, kycErr: '', kycDocId: 'front', kycDocErr: '', kycReq: [], kycUploading: false, kycBusy: false, returnTo: '',
-    cat: '', mineral: '', pid: '', qty: '1', qtyErr: '', search: '', sort: 'featured', fform: 'All', labOnly: false,
+    cat: '', mineral: '', pid: '', qty: '1', qtyErr: '', search: '', sellSearch: '', sort: 'featured', fform: 'All', labOnly: false,
     catalogueLoading: false, catalogueLoaded: false, catalogueErr: '', catVersion: 0, productsByMineral: {},
-    cart: [], cartVersion: 0, orders: [], ordersLoading: false, oid: '', otab: 'buy', om: {}, notifs: [], unread: 0, summary: null, placing: false,
+    cart: [], cartVersion: 0, wish: [], orders: [], ordersLoading: false, oid: '', otab: 'buy', om: {}, notifs: [], unread: 0, summary: null, placing: false,
     ship: { org: '', street: '', city: '', country: '', contact: '', mobile: '' }, shipErr: {},
     pf: { method: '', terms: '', billName: '', billAddr: '', instr: '', date: '', time: '', address: '', contact: '', mobile: '', avail: true, inspInstr: '', c1: false, c2: false }, pfErr: {},
     sc: { method: '', bank: '', account: '', date: '', time: '', address: '', pickup: '', logistics: '', other: '', c1: false }, scErr: {},

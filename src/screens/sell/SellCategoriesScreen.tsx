@@ -1,54 +1,80 @@
 import React from 'react';
-import { View } from 'react-native';
+import { Image, StyleSheet, View } from 'react-native';
 import { useStore } from '../../context/AppStore';
-import { Card, Chevron, ListCard, SearchBar } from '../../components/ui/Blocks';
-import { FadeUp } from '../../components/ui/Motion';
-import { Tap } from '../../components/ui/Tap';
-import { Label, Txt } from '../../components/ui/Txt';
-import { CATS, mineralName } from '../../lib/mb4';
-import { colors as c } from '../../theme';
+import { T } from '../../components/mb/base';
+import { IMG, MineralArt } from '../../components/mb/art';
+import { Empty, Note, Press } from '../../components/mb/kit';
+import { CATS, mineralName, PRODUCTS } from '../../lib/mb4';
+import { D } from '../../theme';
 import { CatalogueState } from '../buy/CatalogueState';
+import { SearchBox } from '../buy/CategoriesScreen';
 
-export function SellCategoriesScreen() {
-  const store = useStore(), s = store.state, d = s.draft;
-  const q = s.search.trim().toLowerCase();
-  const groups = CATS.map(cat => ({ name: cat.name, items: cat.minerals.filter(([, n]) => !q || n.toLowerCase().includes(q)) })).filter(g => g.items.length);
-  const none = !!q && !CATS.some(cat => cat.minerals.some(([, n]) => n.toLowerCase().includes(q)));
-  const pick = (id: string) => { store.setState(x => ({ draft: { ...x.draft, mineral: id }, draftErr: {} })); store.go('sellForm'); };
+/** Sticky top of the Sell tab. */
+export function SellTop() {
+  const store = useStore(), s = store.state;
   return (
-    <FadeUp style={{ paddingHorizontal: 18, paddingBottom: 24 }}>
-      <Txt s={14} c={c.muted} lh={1.5} style={{ marginHorizontal: 4, marginBottom: 12 }}>Choose the mineral you want to sell to Mineral Bridge.</Txt>
-      {s.user && s.user.role === 'buyer' ? (
-        <View style={{ marginBottom: 12, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 16, backgroundColor: c.amberBg, borderWidth: 1, borderColor: c.amberLine }}>
-          <Txt s={13} c={c.amberInk} lh={1.45}>Your account is set up for buying. You can prepare a sell request now and add a seller type when you submit.</Txt>
-        </View>
-      ) : null}
-      {s.hasDraft && d.mineral ? (
-        <View style={{ marginBottom: 12, paddingVertical: 14, paddingHorizontal: 15, borderRadius: 18, backgroundColor: c.ink }}>
-          <Label c={c.gold}>DRAFT SAVED</Label>
-          <Txt s={14} w={600} c={c.paper} style={{ marginTop: 5 }}>{mineralName(d.mineral || 'gold') + ' · ' + d.photos + (d.photos === 1 ? ' photo' : ' photos') + (d.qty ? ' · ' + d.qty + ' ' + d.unit : '')}</Txt>
-          <View style={{ flexDirection: 'row', gap: 16, marginTop: 10 }}>
-            <Tap onPress={() => store.go('sellForm')}><Txt s={13} w={600} c={c.gold}>Resume</Txt></Tap>
-            <Tap onPress={() => store.setState({ sheet: 'discardDraft' })}><Txt s={13} w={600} c={c.soft}>Discard</Txt></Tap>
-          </View>
-        </View>
-      ) : null}
-      <SearchBar label="Search minerals" value={s.search} onChangeText={t => store.setState({ search: t })} placeholder="Search minerals" />
-      {groups.map(g => (
-        <View key={g.name}>
-          <Label style={{ marginTop: 18, marginHorizontal: 4, marginBottom: 8 }}>{g.name}</Label>
-          <ListCard>
-            {g.items.map(([id, n]) => (
-              <Tap key={id} onPress={() => pick(id)} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: c.hair }}>
-                <Txt s={14.5} w={500} style={{ flex: 1 }}>{n}</Txt>
-                <Chevron />
-              </Tap>
-            ))}
-          </ListCard>
-        </View>
-      ))}
-      {!CATS.length ? <CatalogueState what="minerals" /> : null}
-      {none ? <Card style={{ marginTop: 16, padding: 22, alignItems: 'center' }}><Txt s={14} c={c.muted} center>No mineral matches “{s.search}”.</Txt></Card> : null}
-    </FadeUp>
+    <View style={{ backgroundColor: 'rgba(244,242,237,.95)', paddingTop: 6, paddingHorizontal: 16, paddingBottom: 10, zIndex: 15 }}>
+      <T s={20} w={800} accessibilityRole="header">Sell minerals</T>
+      <T s={12.5} w={600} c={D.MUT} style={{ marginTop: 2 }}>Choose the mineral you want to sell to Mineral Bridge.</T>
+      <SearchBox value={s.sellSearch} onChange={t => store.setState({ sellSearch: t })} placeholder="Search minerals" label="Search minerals" />
+    </View>
   );
 }
+
+const formFor = (m: string) => (PRODUCTS.find(p => p.mineral === m) || { form: 'Ore' }).form;
+
+/** Sell tab (`scr_sell`): saved draft and every mineral as a 3-column grid. */
+export function SellCategoriesScreen() {
+  const store = useStore(), s = store.state, d = s.draft, u = s.user, q = s.sellSearch.trim().toLowerCase();
+  const groups = CATS.map(c => ({ c, items: c.minerals.filter(([, n]) => !q || n.toLowerCase().includes(q)) })).filter(g => g.items.length);
+  const pick = (id: string) => { store.setState(x => ({ draft: { ...x.draft, mineral: id }, draftErr: {} })); store.go('sellForm'); };
+  const photos = s.uploads.sellPhotos.length;
+  const rows = (items: [string, string][]) => { const out: [string, string][][] = []; items.forEach((it, i) => { if (i % 3 === 0) out.push([]); out[out.length - 1].push(it); }); return out; };
+  return (
+    <View style={{ paddingTop: 4, paddingHorizontal: 16, paddingBottom: 24 }}>
+      {u && u.role === 'buyer' ? <Note mt={8}>Your account is set up for buying. You can prepare a sell request now and add a seller type when you submit.</Note> : null}
+      {s.hasDraft && d.mineral ? (
+        <View style={st.draft}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <T s={10.5} w={800} c={D.GOLD} ls={0.08}>DRAFT SAVED</T>
+            <T s={14} w={800} c={D.white} style={{ marginTop: 3 }}>{mineralName(d.mineral) + ' · ' + photos + (photos === 1 ? ' photo' : ' photos') + (d.qty ? ' · ' + d.qty + ' ' + d.unit : '')}</T>
+          </View>
+          <Press onPress={() => store.go('sellForm')} style={{ paddingVertical: 8, paddingHorizontal: 12, borderRadius: 10, backgroundColor: D.GOLD }}><T s={12.5} w={800} c={D.G}>Resume</T></Press>
+          <Press onPress={() => store.setState({ sheet: 'discardDraft' })}><T s={12.5} w={800} c={D.navyMute}>Discard</T></Press>
+        </View>
+      ) : null}
+      {!CATS.length ? <CatalogueState what="minerals" /> : null}
+      {groups.map(g => (
+        <View key={g.c.id} style={{ marginTop: 18 }}>
+          <T s={15} w={800} style={{ marginBottom: 10 }}>{g.c.name}</T>
+          <View style={{ gap: 10 }}>
+            {rows(g.items).map((r, i) => (
+              <View key={i} style={{ flexDirection: 'row', gap: 10 }}>
+                {[0, 1, 2].map(k => {
+                  const it = r[k];
+                  if (!it) return <View key={k} style={{ flex: 1 }} />;
+                  const [id, n] = it, gold = id.startsWith('gold');
+                  return (
+                    <Press key={id} onPress={() => pick(id)} style={st.tile}>
+                      <View style={st.circle}>
+                        {gold ? <Image source={IMG.grains} resizeMode="cover" style={[StyleSheet.absoluteFill, { width: '100%', height: '100%' }]} /> : <View style={{ width: '82%', height: '82%' }}><MineralArt mineral={id} form={formFor(id)} /></View>}
+                      </View>
+                      <T s={11.5} w={800} center lh={1.2}>{n}</T>
+                    </Press>
+                  );
+                })}
+              </View>
+            ))}
+          </View>
+        </View>
+      ))}
+      {CATS.length && !groups.length ? <Empty icon="search" title={'No mineral matches “' + s.sellSearch + '”.'} msg="Try another name." /> : null}
+    </View>
+  );
+}
+
+const st = StyleSheet.create({
+  draft: { marginTop: 10, backgroundColor: D.G, borderRadius: 18, padding: 14, flexDirection: 'row', gap: 12, alignItems: 'center' },
+  tile: { flex: 1, minWidth: 0, backgroundColor: D.white, borderWidth: 1, borderColor: D.BOR, borderRadius: 18, paddingTop: 12, paddingHorizontal: 6, paddingBottom: 10, alignItems: 'center', gap: 6, boxShadow: '0 8px 18px -16px rgba(14,26,51,.5)' },
+  circle: { width: 58, height: 58, borderRadius: 29, backgroundColor: D.TINT, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+});

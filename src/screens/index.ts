@@ -9,8 +9,8 @@ import { RegDetailsScreen } from './onboarding/RegDetailsScreen';
 import { KycScreen } from './onboarding/KycScreen';
 import { KycDocScreen } from './onboarding/KycDocScreen';
 import { KycDoneScreen } from './onboarding/KycDoneScreen';
-import { DashboardScreen } from './dashboard/DashboardScreen';
-import { CategoriesScreen } from './buy/CategoriesScreen';
+import { DashboardScreen, DashboardTop } from './dashboard/DashboardScreen';
+import { BuyTop, CategoriesScreen } from './buy/CategoriesScreen';
 import { MineralsScreen } from './buy/MineralsScreen';
 import { LotsScreen } from './buy/LotsScreen';
 import { ProductDetailScreen } from './buy/ProductDetailScreen';
@@ -31,7 +31,7 @@ import { CancelScreen } from './orders/CancelScreen';
 import { RefundScreen } from './orders/RefundScreen';
 import { RefundsScreen } from './orders/RefundsScreen';
 import { DocumentScreen } from './orders/DocumentScreen';
-import { SellCategoriesScreen } from './sell/SellCategoriesScreen';
+import { SellCategoriesScreen, SellTop } from './sell/SellCategoriesScreen';
 import { SellFormScreen } from './sell/SellFormScreen';
 import { SellDoneScreen } from './sell/SellDoneScreen';
 import { SellerConfirmScreen } from './sell/SellerConfirmScreen';
@@ -59,3 +59,9 @@ export const SCREENS: Record<AppScreen, React.ComponentType<ScreenProps>> = {
   auctions: AuctionsScreen, auction: AuctionScreen, auctionWon: AuctionWonScreen, doc: DocumentScreen,
   contactOtp: ContactOtpScreen, priceVar: PriceVariationScreen, support: SupportInboxScreen, supportThread: SupportThreadScreen,
 };
+
+/** Fixed (sticky) tops drawn above the scrolling content: Home greeting, Buy search + chips, Sell search. */
+export const TOPS: Partial<Record<AppScreen, React.ComponentType>> = { home: DashboardTop, cats: BuyTop, sellCats: SellTop };
+
+/** Screen background behind the content (white screens of the final design; everything else is paper #F4F2ED). */
+export const SCREEN_BG: Partial<Record<AppScreen, string>> = { welcome: '#FFFFFF', auth: '#FFFFFF', otp: '#FFFFFF' };

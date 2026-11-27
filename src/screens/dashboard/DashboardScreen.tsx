@@ -1,122 +1,169 @@
-import React from 'react';
-import { StyleSheet, useWindowDimensions, View } from 'react-native';
+import React, { useEffect } from 'react';
+import { Image, ScrollView, StyleSheet, View } from 'react-native';
 import { useStore } from '../../context/AppStore';
-import { BgImage, Card, Chevron, ListCard } from '../../components/ui/Blocks';
-import { LinearFill } from '../../components/ui/Gradient';
-import { Icon, IC } from '../../components/ui/Icon';
-import { FadeUp } from '../../components/ui/Motion';
-import { Tap } from '../../components/ui/Tap';
-import { Label, Txt } from '../../components/ui/Txt';
-import { imgFor } from '../../lib/images';
+import { Grad, Ic, Rise, T } from '../../components/mb/base';
+import { catIm, IMG, ImFill, imBg } from '../../components/mb/art';
+import { Grid2, IconBtn, Press } from '../../components/mb/kit';
 import { CATS, PRODUCTS } from '../../lib/mb4';
-import { colors as c } from '../../theme';
+import { CAT_TINT, catKey, D, SHADOW } from '../../theme';
 import { CatalogueState } from '../buy/CatalogueState';
+import { byAvailable, ProductCard } from '../buy/productCard';
 
-/** Home tab ("home" screen in the design). */
+const firstName = (u: { name?: string; business?: string; email?: string } | null) =>
+  u ? (String(u.name || '').trim().split(' ')[0] || String(u.business || '').trim() || String(u.email || '').split('@')[0] || 'Trader') : 'Guest';
+
+/** Sticky top of Home: avatar + greeting, search / cart / notifications. */
+export function DashboardTop() {
+  const store = useStore(), s = store.state, u = s.user, first = firstName(u);
+  return (
+    <View style={{ paddingTop: 6, paddingHorizontal: 16, paddingBottom: 14, zIndex: 15 }}>
+      <Grad stops={[[0, D.cream], [1, D.BG]]} />
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Press scale={0.98} onPress={() => store.jump('profile')} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 0, flexShrink: 1 }}>
+          <View style={st.avatar}><T s={16} w={800} c={D.GOLD}>{first[0].toUpperCase()}</T></View>
+          <View style={{ minWidth: 0, flexShrink: 1 }}>
+            <T s={11.5} w={700} c={D.MUT}>{u ? 'Welcome back' : 'Welcome'}</T>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <T s={16} w={800} lines={1} style={{ flexShrink: 1 }}>{first}</T>
+              <Ic name="chevronDown" s={14} c={D.MUT} />
+            </View>
+          </View>
+        </Press>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <IconBtn icon="search" label="Search" onPress={() => store.jump('cats')} />
+          <IconBtn icon="cart" label="Cart" badge={s.cart.length} onPress={() => store.go('cart')} />
+          <IconBtn icon="bell" label="Notifications" badge={u ? s.unread || s.notifs.filter(n => !n.read).length : 0} onPress={() => store.go('notifs')} />
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function Head({ t, onAll }: { t: string; onAll?: () => void }) {
+  return (
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+      <T s={16} w={800} style={{ flexShrink: 1 }}>{t}</T>
+      {onAll ? <Press onPress={onAll}><T s={12.5} w={800} c={D.G}>See all</T></Press> : null}
+    </View>
+  );
+}
+
+/** Home tab (`scr_home`). */
 export function DashboardScreen() {
   const store = useStore(), s = store.state, u = s.user;
-  const { width } = useWindowDimensions();
-  const tile = Math.floor((width - 36 - 8) / 2);
-  const first = u ? (String(u.name || '').trim().split(' ')[0] || String(u.business || '').trim() || String(u.email || '').split('@')[0] || 'Trader') : 'Guest';
-  const mine = s.orders.map(o => store.view(o)), actN = mine.filter(v => v.you).length;
-  const unread = u ? s.unread : 0;
-  const kycText = u && u.kyc === 'pending' ? 'KYC under review · ' + u.kycRef : u && u.kyc === 'rejected' ? 'KYC needs another document' : 'Complete KYC to buy or sell';
-  const stats: [string, number][] = [['Action needed', actN], ['Active orders', mine.filter(v => v.kind === 'buy' && !v.done && !v.rej).length], ['Sell requests', mine.filter(v => v.kind === 'sell' && !v.done && !v.rej).length]];
-  const goSignup = () => { store.setState(x => ({ auth: { ...x.auth, mode: 'signup' } })); store.go('auth'); };
-
+  useEffect(() => { void store.task(store.remote.loadCatalogue()); }, [store]);
+  const views = u ? s.orders.map(o => store.view(o)) : [], act = views.filter(v => v.you).slice(0, 3);
+  const stats: [string, number, 'buy' | 'sell'][] = [['Action needed', views.filter(v => v.you).length, 'buy'], ['Active orders', views.filter(v => v.kind === 'buy' && !v.done && !v.rej).length, 'buy'], ['Sell requests', views.filter(v => v.kind === 'sell' && !v.done && !v.rej).length, 'sell']];
+  const toBuy = (cat = '') => store.jump('cats', { cat, search: '' });
+  const lotsOf = (minerals: [string, string][]) => PRODUCTS.filter(x => minerals.some(([m]) => m === x.mineral));
+  const rejected = u && u.kyc === 'rejected';
   return (
-    <FadeUp style={{ paddingTop: 4, paddingHorizontal: 18, paddingBottom: 24 }}>
-      <View style={st.top}>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Label>WELCOME BACK</Label>
-          <Txt serif s={28} lh={1.1} style={{ marginTop: 2 }}>{first}</Txt>
-        </View>
-        <Tap label="Notifications" onPress={() => store.go('notifs')} style={st.bell}>
-          <Icon d={IC.bell} size={18} />
-          {unread ? <View style={st.badge}><Txt s={10.5} w={700} c="#fff">{String(unread)}</Txt></View> : null}
-        </Tap>
-      </View>
+    <Rise dur={280} style={{ paddingHorizontal: 16, paddingBottom: 26 }}>
       {u && u.kyc !== 'verified' ? (
-        <Tap onPress={() => store.go('kycStatus')} style={st.banner}>
-          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: c.amber }} />
-          <Txt s={13} w={600} c={c.amberInk} style={{ flex: 1 }}>{kycText}</Txt>
-          <Chevron />
-        </Tap>
+        <Press scale={0.99} onPress={() => (u.kyc === 'pending' ? store.go('kycDone') : store.go('kyc'))} style={[st.banner, { backgroundColor: rejected ? D.dangerBg : D.amberBg }]}>
+          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: rejected ? D.DANGER : D.AMBER }} />
+          <T s={13} w={700} c={rejected ? D.DANGER : D.amberInk2} style={{ flex: 1 }}>{u.kyc === 'pending' ? 'KYC under review · ' + u.kycRef : rejected ? 'KYC needs another document' : 'Complete KYC to buy or sell'}</T>
+          <Ic name="chevronRight" s={18} c={D.MUT} />
+        </Press>
       ) : null}
       {!u ? (
-        <Tap onPress={goSignup} style={st.banner}>
-          <Txt s={13} w={600} c={c.amberInk} style={{ flex: 1 }}>You are browsing as a guest. Create an account to buy or sell.</Txt>
-          <Chevron />
-        </Tap>
+        <Press scale={0.99} onPress={() => { store.setState(x => ({ auth: { ...x.auth, mode: 'signup' } })); store.go('auth'); }} style={[st.banner, { backgroundColor: D.TINT }]}>
+          <T s={13} w={700} c={D.GD} style={{ flex: 1 }}>You are browsing as a guest. Create an account to buy or sell.</T>
+          <Ic name="chevronRight" s={18} c={D.G} />
+        </Press>
       ) : null}
-      <BgImage source={imgFor('gold-bullion')} style={st.hero}>
-        <LinearFill stops={[[0, 'rgba(18,18,20,.15)'], [1, 'rgba(18,18,20,.86)']]} />
-        <View style={st.heroText}>
-          <Label c={c.gold}>INSPECTED · CERTIFIED · TRACKED</Label>
-          <Txt serif s={28} lh={1.05} c={c.paper} style={{ marginTop: 6 }}>Verified minerals, from mine to delivery.</Txt>
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
-            <Tap onPress={() => store.jump('cats')} style={[st.heroBtn, { backgroundColor: c.gold }]}><Txt s={14} w={600}>Buy minerals</Txt></Tap>
-            <Tap onPress={() => store.jump('sellCats')} style={[st.heroBtn, st.heroGhost]}><Txt s={14} w={600} c={c.paper}>Sell minerals</Txt></Tap>
+
+      <View style={st.hero}>
+        <Image source={IMG.grains} resizeMode="cover" style={[StyleSheet.absoluteFill, { width: '100%', height: '100%' }]} />
+        <Grad angle={105} stops={[[0.08, 'rgba(14,26,51,.94)'], [0.45, 'rgba(20,40,75,.8)'], [1, 'rgba(20,40,75,.12)']]} />
+        <View style={{ padding: 20, maxWidth: '78%' }}>
+          <View style={st.heroTag}><T s={10} w={800} c={D.white} ls={0.08}>INSPECTED · CERTIFIED · TRACKED</T></View>
+          <T s={22} w={800} c={D.white} lh={1.12} style={{ marginTop: 11 }}>Verified minerals, from mine to delivery.</T>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 15 }}>
+            <Press onPress={() => toBuy()} style={[st.heroBtn, { backgroundColor: D.GOLD }]}><T s={12.5} w={800} c={D.G}>Buy minerals</T></Press>
+            <Press onPress={() => store.jump('sellCats')} style={[st.heroBtn, { backgroundColor: 'rgba(255,255,255,.14)', borderWidth: 1, borderColor: 'rgba(255,255,255,.4)' }]}><T s={12.5} w={800} c={D.white}>Sell minerals</T></Press>
           </View>
         </View>
-      </BgImage>
-      <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
-        {stats.map(([l, n]) => (
-          <Tap key={l} onPress={() => { store.setState({ otab: l === 'Sell requests' ? 'sell' : 'buy' }); store.jump('orders'); }} style={{ flex: 1, minWidth: 0 }}>
-            <Card r={18} style={{ paddingVertical: 13, paddingHorizontal: 12 }}>
-              <Txt mono s={22} w={600}>{String(n)}</Txt>
-              <Txt s={11.5} c={c.muted} lh={1.3} style={{ marginTop: 3 }}>{l}</Txt>
-            </Card>
-          </Tap>
-        ))}
       </View>
-      {actN > 0 && u ? (
-        <>
-          <Label style={st.sec}>NEEDS YOUR ACTION</Label>
-          <ListCard>
-            {mine.filter(v => v.you).slice(0, 3).map(v => (
-              <Tap key={v.id} onPress={() => store.go('order', { oid: v.id })} style={st.needRow}>
-                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: c.gold }} />
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Txt s={14} w={600}>{v.actionLabel}</Txt>
-                  <Txt s={12} c={c.muted} style={{ marginTop: 2 }}>{v.id} · {v.title}</Txt>
-                </View>
-                <Chevron />
-              </Tap>
-            ))}
-          </ListCard>
-        </>
+
+      {u ? (
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
+          {stats.map(([l, n, ot]) => (
+            <Press key={l} onPress={() => store.jump('orders', { otab: ot })} style={st.stat}>
+              <T s={20} w={800} c={l === 'Action needed' && n ? D.AMBER : D.INK}>{String(n)}</T>
+              <T s={11} w={700} c={D.MUT} style={{ marginTop: 2 }}>{l}</T>
+            </Press>
+          ))}
+        </View>
       ) : null}
-      <Label style={st.sec}>MINERAL CATEGORIES</Label>
-      {!CATS.length ? <CatalogueState what="minerals" /> : null}
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        {CATS.map(cat => (
-          <Tap key={cat.id} scale={0.97} onPress={() => store.go('minerals', { cat: cat.id, search: '' })} style={{ width: tile }}>
-            <BgImage source={imgFor(cat.img)} style={st.cat}>
-              <LinearFill stops={[[0.3, 'rgba(18,18,20,0)'], [1, 'rgba(18,18,20,.8)']]} />
-              <View style={st.catText}>
-                <Txt s={14} w={600} c={c.paper}>{cat.name}</Txt>
-                <Txt s={11.5} c="rgba(244,242,237,.8)" style={{ marginTop: 2 }}>{PRODUCTS.filter(x => cat.minerals.some(([m]) => m === x.mineral)).length + ' lots'}</Txt>
-              </View>
-            </BgImage>
-          </Tap>
-        ))}
+
+      {act.length > 0 ? (
+        <View style={{ marginTop: 20 }}>
+          <Head t="Needs your action" onAll={() => store.jump('orders')} />
+          <View style={st.list}>
+            {act.map((o, i) => (
+              <Press key={o.id} scale={0.99} onPress={() => store.go('order', { oid: o.id })} style={[st.actRow, { borderBottomWidth: i < act.length - 1 ? 1 : 0 }]}>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: D.AMBER }} />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <T s={13.5} w={800}>{o.actionLabel}</T>
+                  <T s={11.5} w={600} c={D.MUT} style={{ marginTop: 2 }}>{o.id + ' · ' + o.title}</T>
+                </View>
+                <Ic name="chevronRight" s={18} c={D.MUT} />
+              </Press>
+            ))}
+          </View>
+        </View>
+      ) : null}
+
+      <View style={{ marginTop: 22 }}>
+        <Head t="Mineral categories" onAll={() => toBuy()} />
+        {!CATS.length ? <CatalogueState what="minerals" /> : (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -16 }} contentContainerStyle={{ gap: 14, paddingHorizontal: 16, paddingTop: 2, paddingBottom: 4 }}>
+            {CATS.map(c => {
+              const k = catKey(c.id), im = catIm(c.id);
+              return (
+                <Press key={c.id} onPress={() => toBuy(c.id)} style={{ width: 78, alignItems: 'center', gap: 7 }}>
+                  <View style={[st.catCircle, { backgroundColor: k === 'precious' ? D.white : imBg(im, CAT_TINT[k]) }]}><ImFill im={im} inset={0.78} /></View>
+                  <T s={10.5} w={700} center lh={1.2}>{c.name}</T>
+                  <T s={10} w={600} c={D.MUT} style={{ marginTop: -4 }}>{lotsOf(c.minerals).length + ' lots'}</T>
+                </Press>
+              );
+            })}
+          </ScrollView>
+        )}
       </View>
-    </FadeUp>
+
+      {CATS.map(c => {
+        const lots = [...lotsOf(c.minerals)].sort(byAvailable);
+        if (!lots.length) return null;
+        return (
+          <View key={c.id} style={{ marginTop: 24 }}>
+            <Head t={c.name + ' · ' + lots.length} onAll={() => toBuy(c.id)} />
+            <Grid2>{lots.map(p => <ProductCard key={p.id} store={store} p={p} />)}</Grid2>
+          </View>
+        );
+      })}
+
+      <View style={st.verified}>
+        <View style={{ width: 56, height: 56, borderRadius: 14, backgroundColor: D.TINT, alignItems: 'center', justifyContent: 'center' }}><Ic name="shield" s={28} c={D.G} w={1.8} /></View>
+        <View style={{ flex: 1 }}>
+          <T s={15} w={800} c={D.GD}>Verified at every step</T>
+          <T s={12.5} w={600} c={D.MUT} lh={1.4} style={{ marginTop: 2 }}>Inspected lots, agreed quotations, e-contracts and tracked delivery.</T>
+        </View>
+      </View>
+    </Rise>
   );
 }
 
 const st = StyleSheet.create({
-  top: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 4 },
-  bell: { width: 44, height: 44, borderRadius: 22, backgroundColor: c.white, borderWidth: 1, borderColor: c.line, alignItems: 'center', justifyContent: 'center' },
-  badge: { position: 'absolute', top: -2, right: -2, minWidth: 18, height: 18, paddingHorizontal: 5, borderRadius: 9, backgroundColor: c.alert, alignItems: 'center', justifyContent: 'center' },
-  banner: { marginTop: 14, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 16, backgroundColor: c.amberBg, borderWidth: 1, borderColor: c.amberLine, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  hero: { marginTop: 14, borderRadius: 26, height: 228 },
-  heroText: { position: 'absolute', left: 18, right: 18, bottom: 16 },
-  heroBtn: { flex: 1, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  heroGhost: { backgroundColor: 'rgba(244,242,237,.14)', borderWidth: 1, borderColor: 'rgba(244,242,237,.3)' },
-  sec: { marginTop: 22, marginHorizontal: 4, marginBottom: 8 },
-  needRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: c.hair },
-  cat: { height: 120, borderRadius: 20 },
-  catText: { position: 'absolute', left: 12, right: 12, bottom: 10 },
+  avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: D.G, alignItems: 'center', justifyContent: 'center' },
+  banner: { width: '100%', flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 14, paddingVertical: 12, paddingHorizontal: 14, marginTop: 10 },
+  hero: { marginTop: 14, borderRadius: 20, overflow: 'hidden', minHeight: 178, backgroundColor: D.INK, boxShadow: SHADOW.hero },
+  heroTag: { alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,.16)', borderWidth: 1, borderColor: 'rgba(255,255,255,.3)', paddingVertical: 5, paddingHorizontal: 10, borderRadius: 999 },
+  heroBtn: { paddingVertical: 10, paddingHorizontal: 14, borderRadius: 11 },
+  stat: { flex: 1, backgroundColor: D.white, borderWidth: 1, borderColor: D.BOR, borderRadius: 16, padding: 12 },
+  list: { backgroundColor: D.white, borderWidth: 1, borderColor: D.BOR, borderRadius: 18, paddingVertical: 2, paddingHorizontal: 14 },
+  actRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 13, borderBottomColor: D.BOR },
+  catCircle: { width: 72, height: 72, borderRadius: 36, borderWidth: 1, borderColor: '#EFEFEF', overflow: 'hidden', alignItems: 'center', justifyContent: 'center', boxShadow: '0 6px 14px -8px rgba(14,26,51,.3)' },
+  verified: { marginTop: 24, borderRadius: 18, backgroundColor: D.white, borderWidth: 1, borderColor: D.BOR, flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 16, paddingHorizontal: 18 },
 });
