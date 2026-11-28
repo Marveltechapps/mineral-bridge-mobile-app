@@ -9,8 +9,12 @@ export type KycDocId = 'front' | 'back' | 'selfie' | 'address' | 'biz';
 export interface Category {
   id: string;
   name: string;
+  /** Remote category photo, or empty when the catalogue has none. */
   img: string;
-  minerals: [string, string][];
+  /** Sum of catalogue lot counts for the minerals in this category. */
+  lots: number;
+  /** slug, display name, remote image URL (empty when the mineral has no photo). */
+  minerals: [string, string, string][];
 }
 
 export interface Product {

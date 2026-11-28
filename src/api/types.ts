@@ -250,6 +250,8 @@ export interface CatalogueMineral {
   slug: string;
   name: string;
   lotCount: number;
+  /** Original catalogue photo for this mineral. Null when none was uploaded. */
+  image?: { url: string; name: string | null } | null;
 }
 
 export interface CatalogueCategory {

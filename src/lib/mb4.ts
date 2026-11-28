@@ -53,6 +53,12 @@ export const mineralName = (id: string) => {
   for (const c of CATS) for (const [m, n] of c.minerals) if (m === id) return n;
   return id;
 };
+/** Original photo for a mineral, from its category record or one of its own lots. */
+export function mineralImageUrl(id: string): string {
+  for (const c of CATS) for (const [m, , img] of c.minerals) if (m === id && /^https?:\/\//i.test(img || '')) return img;
+  const lot = PRODUCTS.find(p => p.mineral === id && /^https?:\/\//i.test(p.img || ''));
+  return lot?.img || '';
+}
 export const catOf = (id: string) => CATS.find(c => c.minerals.some(([m]) => m === id));
 
 export const BUYER_TYPES: [string, string, string][] = [['refinery', 'Refineries and smelters', 'Buy doré and concentrate to refine into high-grade metal'], ['house', 'International trading houses', 'Bulk volumes to hedge or distribute globally'], ['industry', 'Manufacturing & industrial end-users', 'Lithium, cobalt, quartz and more for production'], ['jewel', 'Jewelry manufacturers & artisans', 'Precious metals and gemstones for consumer goods'], ['investor', 'Retail investors & collectors', 'Bars, bullion and rare specimens'], ['wholesale', 'B2B wholesalers', 'Medium-to-large lots to warehouse and resell']];

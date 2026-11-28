@@ -1,12 +1,13 @@
 // Product imagery of the final design: the two gold photos, the logo, and the per-mineral
 // placeholder artwork that the prototype draws as SVG (bars, rough gems, flakes, rocks).
-import React, { useId } from 'react';
-import { Image, View } from 'react-native';
+import React, { useEffect, useId, useState } from 'react';
+import { ActivityIndicator, Image, StyleSheet, View } from 'react-native';
 import type { ImageSourcePropType, StyleProp, ViewStyle } from 'react-native';
 import Svg, { Defs, Ellipse, G, LinearGradient, Path, Stop } from 'react-native-svg';
 import { CAT_TINT, catKey, D } from '../../theme';
 import { catOf } from '../../lib/mb4';
 import type { Product } from '../../types/mineralBridge';
+import { Ic } from './base';
 
 export const IMG = {
   grains: require('../../../assets/images/mb_grains.jpg') as ImageSourcePropType,
@@ -23,8 +24,6 @@ function hueOf(mineral: string): [string, string] {
   return k ? HUE[k] : ['#cccccc', '#777777'];
 }
 const isBarForm = (f: string) => /bar|bullion|cathode|sheet|biscuit/.test(norm(f));
-const isPhotoBars = (f: string) => /bar|bullion|biscuit/.test(norm(f));
-const isGold = (m: string) => norm(m).startsWith('gold');
 
 /** The prototype's `art(mineral, form)` SVG, drawn natively. */
 export function MineralArt({ mineral, form }: { mineral: string; form: string }) {
@@ -75,25 +74,59 @@ export function MineralArt({ mineral, form }: { mineral: string; form: string })
   );
 }
 
-/** What to draw for a product (`prodImg` in the prototype). Remote photos from the API win over placeholder art. */
-export type Im = { kind: 'photo'; src: ImageSourcePropType; bars: boolean } | { kind: 'art'; mineral: string; form: string };
+/** What to draw for a product. A catalogue URL is shown as itself. Anything else is an empty frame, never another mineral's picture. */
+export type Im = { kind: 'photo'; src: ImageSourcePropType; bars: boolean } | { kind: 'art'; mineral: string; form: string } | { kind: 'empty' };
+
+const isRemote = (url?: string | null) => /^https?:\/\//i.test(url || '');
+
+export function remotePhoto(url?: string | null): Im {
+  if (isRemote(url)) return { kind: 'photo', src: { uri: url as string }, bars: false };
+  return { kind: 'empty' };
+}
 
 export function prodIm(p?: Pick<Product, 'mineral' | 'form' | 'img'> | null): Im {
-  if (!p) return { kind: 'art', mineral: '', form: 'Ore' };
-  if (/^https?:\/\//i.test(p.img || '')) return { kind: 'photo', src: { uri: p.img }, bars: false };
-  if (isGold(p.mineral) && /dore|doré/.test(norm(p.form))) return { kind: 'art', mineral: 'gold', form: 'Bars' };
-  if (isGold(p.mineral)) return isPhotoBars(p.form) ? { kind: 'photo', src: IMG.bars, bars: true } : { kind: 'photo', src: IMG.grains, bars: false };
-  return { kind: 'art', mineral: p.mineral, form: p.form };
+  return remotePhoto(p?.img);
 }
 /** Background behind an image: white for the bars photo, near-black for photos, otherwise `tint`. */
 export const imBg = (im: Im, tint: string = D.TINT) => (im.kind === 'photo' ? (im.bars ? D.white : D.photoDark) : tint);
+
+function MissingImage() {
+  return (
+    <View style={st.missing}>
+      <Ic name="camera" s={18} c={D.MUT} />
+    </View>
+  );
+}
+
+function RemotePhoto({ uri, full }: { uri: string; full: boolean }) {
+  const [failed, setFailed] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => { setFailed(false); setLoaded(false); }, [uri]);
+  if (failed) return <MissingImage />;
+  return (
+    <View style={st.remote}>
+      {loaded ? null : <ActivityIndicator color={D.MUT} />}
+      <Image
+        key={uri}
+        source={{ uri }}
+        resizeMode={full ? 'cover' : 'contain'}
+        onLoad={() => setLoaded(true)}
+        onError={() => setFailed(true)}
+        style={full ? StyleSheet.absoluteFill : st.inset}
+      />
+    </View>
+  );
+}
 /** Category tint of a product's mineral. */
 export const tintOf = (mineral: string) => CAT_TINT[catKey((catOf(mineral) || { id: '' }).id)] || D.TINT;
 
 /** The image itself, filling its parent: cover for photos, `inset` (84%) contain for bars/art. */
 export function ImFill({ im, inset = 0.84 }: { im: Im; inset?: number }) {
   const full = im.kind === 'photo' && !im.bars;
+  if (im.kind === 'empty') return <MissingImage />;
   if (im.kind === 'photo') {
+    const uri = typeof im.src === 'object' && im.src && 'uri' in im.src ? im.src.uri : '';
+    if (uri) return <RemotePhoto uri={uri} full={full} />;
     return <Image source={im.src} resizeMode={full ? 'cover' : 'contain'} style={{ width: (full ? 100 : inset * 100) + '%', height: (full ? 100 : inset * 100) + '%' } as never} />;
   }
   return <View style={{ width: inset * 100 + '%', height: inset * 100 + '%' } as never}><MineralArt mineral={im.mineral} form={im.form} /></View>;
@@ -108,15 +141,13 @@ export function Thumb({ im, sz, style }: { im: Im; sz: number; style?: StyleProp
   );
 }
 
-/** Image shown for a category (`CAT_IMG`). */
-export function catIm(id: string): Im {
-  const k = catKey(id);
-  if (k === 'precious') return { kind: 'photo', src: IMG.bars, bars: true };
-  const m: Record<string, [string, string]> = { base: ['copper', 'Cathode'], critical: ['cobalt', 'Ore'], industrial: ['quartz', 'Lump'], gems: ['emeralds', 'Rough'] };
-  return { kind: 'art', mineral: m[k][0], form: m[k][1] };
-}
-
 /** Round Mineral Bridge logo with its drop shadow (`flat` removes it). */
+const st = StyleSheet.create({
+  missing: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', backgroundColor: D.TINT },
+  remote: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
+  inset: { width: '84%', height: '84%' },
+});
+
 export function Logo({ sz, flat }: { sz: number; flat?: boolean }) {
   return (
     <View style={{ width: sz, height: sz, borderRadius: sz / 2, boxShadow: flat ? undefined : '0 18px 30px rgba(0,0,0,.55)' }}>

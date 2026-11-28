@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { Image, ScrollView, StyleSheet, View } from 'react-native';
 import { useStore } from '../../context/AppStore';
 import { Grad, Ic, Rise, T } from '../../components/mb/base';
-import { catIm, IMG, ImFill, imBg } from '../../components/mb/art';
+import { IMG, ImFill, imBg, remotePhoto } from '../../components/mb/art';
 import { Grid2, IconBtn, Press } from '../../components/mb/kit';
 import { CATS, PRODUCTS } from '../../lib/mb4';
 import { CAT_TINT, catKey, D, SHADOW } from '../../theme';
@@ -55,7 +55,7 @@ export function DashboardScreen() {
   const views = u ? s.orders.map(o => store.view(o)) : [], act = views.filter(v => v.you).slice(0, 3);
   const stats: [string, number, 'buy' | 'sell'][] = [['Action needed', views.filter(v => v.you).length, 'buy'], ['Active orders', views.filter(v => v.kind === 'buy' && !v.done && !v.rej).length, 'buy'], ['Sell requests', views.filter(v => v.kind === 'sell' && !v.done && !v.rej).length, 'sell']];
   const toBuy = (cat = '') => store.jump('cats', { cat, search: '' });
-  const lotsOf = (minerals: [string, string][]) => PRODUCTS.filter(x => minerals.some(([m]) => m === x.mineral));
+  const lotsOf = (minerals: readonly (readonly [string, ...string[]])[]) => PRODUCTS.filter(x => minerals.some(([m]) => m === x.mineral));
   const rejected = u && u.kyc === 'rejected';
   return (
     <Rise dur={280} style={{ paddingHorizontal: 16, paddingBottom: 26 }}>
@@ -120,12 +120,12 @@ export function DashboardScreen() {
         {!CATS.length ? <CatalogueState what="minerals" /> : (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -16 }} contentContainerStyle={{ gap: 14, paddingHorizontal: 16, paddingTop: 2, paddingBottom: 4 }}>
             {CATS.map(c => {
-              const k = catKey(c.id), im = catIm(c.id);
+              const im = remotePhoto(c.img);
               return (
                 <Press key={c.id} onPress={() => toBuy(c.id)} style={{ width: 78, alignItems: 'center', gap: 7 }}>
-                  <View style={[st.catCircle, { backgroundColor: k === 'precious' ? D.white : imBg(im, CAT_TINT[k]) }]}><ImFill im={im} inset={0.78} /></View>
+                  <View style={[st.catCircle, { backgroundColor: imBg(im, CAT_TINT[catKey(c.id)] || D.TINT) }]}><ImFill im={im} /></View>
                   <T s={10.5} w={700} center lh={1.2}>{c.name}</T>
-                  <T s={10} w={600} c={D.MUT} style={{ marginTop: -4 }}>{lotsOf(c.minerals).length + ' lots'}</T>
+                  <T s={10} w={600} c={D.MUT} style={{ marginTop: -4 }}>{c.lots + ' lots'}</T>
                 </Press>
               );
             })}

@@ -43,7 +43,6 @@ import type {
   Shipment,
   User,
 } from '../types/mineralBridge';
-import { hasImage } from './images';
 import { fmt, stages, WHO } from './mb4';
 
 /* ------------------------------ small helpers ------------------------------ */
@@ -335,7 +334,9 @@ export function mapProduct(p: ProductCard | ProductDetail): Product {
   const str = (v: unknown): string => (typeof v === 'string' ? v : '');
   const country = p.origin?.country ? countryName(String(p.origin.country)) : '';
   const place = [p.origin?.site, p.origin?.region].filter(Boolean).join(', ');
-  const img = hasImage(p.imageName) ? (p.imageName as string) : p.imageUrl || p.imageName || 'cat-precious';
+  const mediaUrl = 'media' in p ? p.media.find(m => m.kind === 'image' && /^https?:\/\//i.test(m.url || ''))?.url || '' : '';
+  const cardUrl = /^https?:\/\//i.test(p.imageUrl || '') ? String(p.imageUrl) : '';
+  const img = cardUrl || (/^https?:\/\//i.test(mediaUrl) ? mediaUrl : '');
   const apiLab = p.lab;
   const soldOut = p.soldOut ?? p.status === 'sold';
   const availableOnRequest = !soldOut && (p.availableOnRequest ?? (p.status === 'active' && qtyValue(avail) <= 0));
@@ -363,12 +364,24 @@ export function mapProduct(p: ProductCard | ProductDetail): Product {
 
 export const mapProducts = (items: (ProductCard | ProductDetail)[]): Product[] => items.map(mapProduct);
 
+const remoteImageUrl = (url?: string | null): string => (url && /^https?:\/\//i.test(url) ? url : '');
+
 export function mapCategory(c: CatalogueCategory): Category {
+  const seen = new Set<string>();
+  const minerals: [string, string, string][] = [];
+  let lots = 0;
+  for (const mineral of c.minerals) {
+    if (!mineral.slug || seen.has(mineral.slug)) continue;
+    seen.add(mineral.slug);
+    lots += Number(mineral.lotCount) || 0;
+    minerals.push([mineral.slug, mineral.name, remoteImageUrl(mineral.image?.url)]);
+  }
   return {
     id: c.slug,
     name: c.name,
-    img: hasImage(c.image?.name) ? (c.image?.name as string) : c.image?.url ?? 'cat-precious',
-    minerals: c.minerals.map(m => [m.slug, m.name] as [string, string]),
+    img: remoteImageUrl(c.image?.url) || minerals.find(([, , img]) => img)?.[2] || '',
+    lots,
+    minerals,
   };
 }
 

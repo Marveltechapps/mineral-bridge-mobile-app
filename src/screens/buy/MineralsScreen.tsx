@@ -2,7 +2,7 @@ import React from 'react';
 import { View } from 'react-native';
 import { useStore } from '../../context/AppStore';
 import { Ic, T } from '../../components/mb/base';
-import { catIm, ImFill, imBg } from '../../components/mb/art';
+import { ImFill, imBg, remotePhoto } from '../../components/mb/art';
 import { Card, Row, Section } from '../../components/mb/kit';
 import { CATS, PRODUCTS } from '../../lib/mb4';
 import { CAT_TINT, catKey, D } from '../../theme';
@@ -13,7 +13,7 @@ export function MineralsScreen() {
   const store = useStore(), s = store.state;
   const cat = CATS.find(x => x.id === s.cat) || CATS[0];
   if (!cat) return <View style={{ paddingHorizontal: 16 }}><CatalogueState what="minerals" /></View>;
-  const im = catIm(cat.id);
+  const im = remotePhoto(cat.img);
   return (
     <View style={{ paddingTop: 14, paddingHorizontal: 16, paddingBottom: 26 }}>
       <View style={{ height: 120, borderRadius: 20, overflow: 'hidden', backgroundColor: imBg(im, CAT_TINT[catKey(cat.id)]), alignItems: 'center', justifyContent: 'center' }}><ImFill im={im} inset={0.7} /></View>

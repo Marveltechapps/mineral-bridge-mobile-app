@@ -6,10 +6,10 @@
  * HOW TO OVERRIDE
  * ---------------
  * Development (`__DEV__ === true`, debug builds that load JavaScript from Metro):
- * - Android emulator -> host machine:   http://10.0.2.2:5011/v2
- * - iOS simulator -> host machine:      http://localhost:5011/v2
+ * - Android emulator -> host machine:   http://10.0.2.2:5001/v2
+ * - iOS simulator -> host machine:      http://localhost:5001/v2
  * - Physical device: set DEV_HOST to your computer's LAN IP
- * - Port 5011 is the isolated in-memory API. Port 5001 may point at a hosted database — do not use it for tests.
+ * - Port 5001 is the backend the Admin Dashboard uses, so the catalogue photos are the uploaded originals.
  *
  * Production / release (`__DEV__ === false`):
  * - URLs are injected at bundle time. They are NOT stored as empty literals in a shippable release.
@@ -37,10 +37,10 @@ declare const MB_RELEASE_CLEARTEXT: string;
 
 /**
  * Local backend port for debug builds.
- * Use 5011 (isolated in-memory harness) for integration write tests.
- * Port 5001 is the configured backend and may point at the hosted Atlas cluster — do not create test orders there.
+ * Port 5001 is the running API (same database as the Admin Dashboard catalogue).
+ * Do not point automated write tests at that database.
  */
-const DEV_PORT = 5011;
+const DEV_PORT = 5001;
 
 /**
  * Host used in development. Android emulators reach the host machine through 10.0.2.2.

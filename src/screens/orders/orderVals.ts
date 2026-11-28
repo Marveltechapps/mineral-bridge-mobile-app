@@ -90,6 +90,10 @@ export const signedInUser = (store: MBStore) => store.state.user || EMPTY_USER;
 
 /** Image of an order (first line's lot, or a lot of the mineral being sold). */
 export function orderIm(o: Order): Im {
-  if (o.kind === 'sell' && o.sell) return prodIm(MB.PRODUCTS.find(p => p.mineral === o.sell!.mineral) || { mineral: o.sell.mineral, form: 'Ore', img: '' });
-  return prodIm(MB.product(o.items[0] && o.items[0].pid) || { mineral: '', form: 'Ore', img: '' });
+  if (o.kind === 'sell' && o.sell) {
+    const lot = MB.PRODUCTS.find(p => p.mineral === o.sell!.mineral && /^https?:\/\//i.test(p.img || ''));
+    return prodIm({ mineral: o.sell.mineral, form: lot?.form || '', img: lot?.img || MB.mineralImageUrl(o.sell.mineral) });
+  }
+  const line = MB.product(o.items[0] && o.items[0].pid);
+  return prodIm(line || { mineral: '', form: '', img: '' });
 }

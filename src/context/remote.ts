@@ -103,6 +103,8 @@ export class Remote {
   private bootTimer?: ReturnType<typeof setTimeout>;
   private lastChatPoll = 0;
   private aucReload?: ReturnType<typeof setTimeout>;
+  private catalogueAt = 0;
+  private catalogueFlight = false;
 
   constructor(private s: MBStore) {}
 
@@ -568,13 +570,14 @@ export class Remote {
     return out;
   }
 
-  private ingest(cards: (ProductCard | ProductDetail)[], replaceMineral?: string) {
+  private ingest(cards: (ProductCard | ProductDetail)[], replaceMineral?: string, replaceAll = false) {
     const aliases: Record<string, string> = {};
     const list = cards.map(c => { const p = mapProduct(c); if (c.id !== p.id) aliases[c.id] = p.id; return p; });
-    if (replaceMineral) MB.dropMineral(replaceMineral);
+    if (replaceAll) MB.clearCatalogue();
+    else if (replaceMineral) MB.dropMineral(replaceMineral);
     MB.upsertProducts(list, aliases);
     this.s.setState(x => {
-      const by = { ...x.productsByMineral };
+      const by = replaceAll ? {} : { ...x.productsByMineral };
       if (replaceMineral) by[replaceMineral] = [];
       list.forEach(p => { const a = by[p.mineral] || (by[p.mineral] = []); if (!a.includes(p.id)) a.push(p.id); });
       return { productsByMineral: by, catVersion: x.catVersion + 1 };
@@ -582,16 +585,21 @@ export class Remote {
   }
 
   async loadCatalogue(force = false) {
-    if (!force && (this.st.catalogueLoaded || this.st.catalogueLoading)) return;
+    if (this.catalogueFlight) return;
+    if (!force && this.st.catalogueLoaded && Date.now() - this.catalogueAt < 20_000) return;
+    this.catalogueFlight = true;
     this.s.setState({ catalogueLoading: true, catalogueErr: '' });
     try {
       const [cats, prods] = await Promise.all([catalogueSvc.getCategories(), this.fetchProducts({})]);
-      MB.setCategories(cats.map(mapCategory));
-      this.ingest(prods);
+      const mapped = cats.map(mapCategory);
+      this.ingest(prods, undefined, true);
+      MB.setCategories(mapped);
+      this.catalogueAt = Date.now();
       this.s.setState({ catalogueLoaded: true });
     } catch (e) {
       this.s.setState({ catalogueErr: apiMessage(e) });
     } finally {
+      this.catalogueFlight = false;
       this.s.setState({ catalogueLoading: false });
     }
   }
@@ -1354,7 +1362,7 @@ export class Remote {
       case 'lots': this.bg(this.loadCatalogue()); this.bg(this.loadMineral(x.mineral)); break;
       case 'detail': this.bg(this.loadProduct(x.pid)); break;
       case 'cart': case 'checkout': this.bg(this.loadCart()); break;
-      case 'home': if (signed) { this.bg(this.loadSummary()); this.bg(this.loadOrders()); } break;
+      case 'home': this.bg(this.loadCatalogue()); if (signed) { this.bg(this.loadSummary()); this.bg(this.loadOrders()); } break;
       case 'orders': if (signed) { this.bg(this.loadOrders()); this.bg(this.loadAuctions()); this.bg(this.loadRefunds()); } break;
       case 'order': case 'quote': case 'payInsp': case 'sellConfirm': case 'report': case 'receipt': case 'refunds': case 'priceVar':
         if (signed && oid) this.bg(this.loadOrder(oid, true));
